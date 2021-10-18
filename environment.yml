@@ -1,0 +1,28 @@
+name: srvey
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - comet_ml
+  - defaults
+dependencies:
+  ## Core
+  - python
+  - pytorch=1.9
+  - torchvision
+  - cudatoolkit=11.1
+  - comet_ml
+  - matplotlib
+  - numpy
+  ## Quality of life
+  - black
+  - colorcet
+  - flake8
+  - jupyter
+  - ipykernel
+  - nb_conda
+  - tqdm
+  - rope
+
+# Enable strict channel priority!
+# conda config --set channel_priority strict
