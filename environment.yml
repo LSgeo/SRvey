@@ -8,12 +8,24 @@ channels:
 dependencies:
   ## Core
   - python
-  - pytorch=1.9
-  - torchvision
-  - cudatoolkit=11.1
+  - pytorch::pytorch>=1.9
+  - pytorch/win-64::torchvision>=0.10=py39_cu111 # my-hardware specific bug(?)
+  - nvidia::cudatoolkit=11.1
   - comet_ml
   - matplotlib
   - numpy
+  - verde
+  - harmonica>=0.3.3
+  ## geophys_utils
+  - numexpr
+  - affine
+  - netCDF4
+  - gdal
+  - owslib
+  - scikit-image
+  - scipy
+  - cartopy
+  - shapely
   ## Quality of life
   - black
   - colorcet
