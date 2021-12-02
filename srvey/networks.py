@@ -1,11 +1,11 @@
 import functools
+import logging
 import math
-from typing import ForwardRef
+import time
 
+import numpy as np
 import torch
-from torch.functional import Tensor
 import torch.nn as nn
-from torch.nn import init
 
 import blocks as B
 import cfg
@@ -18,23 +18,22 @@ class BaseModel(nn.Module):
         super().__init__()
 
         self.session = session
+        self.exp = session.experiment
 
         self.device = cfg.device
         self.use_amp = cfg.use_amp and "cuda" in cfg.device.type
         self.scaler = torch.cuda.amp.GradScaler(enabled=cfg.use_amp)
 
         self.num_epochs = cfg.num_epochs
+        self.start_epoch = 0
         self.curr_epoch = 0
-        self.curr_iteration = 0
+        self.curr_iteration = -1  # iterate iteration counter at start of loop
 
         self.model_out_path = session.session_dir / "model"
         self.model_out_path.mkdir(exist_ok=True, parents=True)
 
         self.loss_dict = {}
         self.metric_dict = {}
-
-    def set_lr(self, lr):
-        self.curr_lr = lr
 
     def save_model(self, for_inference_only: bool = True):
         """Save model state for inference / continuation
@@ -74,7 +73,7 @@ class BaseModel(nn.Module):
         self.optimiser_g.load_state_dict(checkpoint["optimiser_g"])
         self.model.to(self.device)  # TODO ? self.model = self.model.to....
         self.curr_iteration = checkpoint["iteration"]
-        self.curr_epoch = checkpoint["epoch"]
+        self.start_epoch = checkpoint["epoch"]
 
         self.validate()
 
@@ -93,11 +92,46 @@ class BaseModel(nn.Module):
     def validate(self):
         pass
 
-    def save_metrics(self):
-        [print(f"{k}: {v:.4e}") for k, v in self.loss_dict.items()]
+    def log_metrics(self, log_to_disk: bool = True, log_to_comet: bool = False):
+        """Save metrics to Comet.ml, and/or log locally"""
+        if log_to_comet:
+            self.exp.set_step(self.curr_iteration)
+            self.exp.log_metrics(self.loss_dict)
+            self.exp.log_metric("Current LR", self.scheduler_g.get_last_lr())
+            self.exp.log_metric(
+                "Seconds per step",
+                (time.perf_counter() - cfg.t0) / (self.curr_iteration + 1),
+            )
+        if log_to_disk:
+            [
+                logging.getLogger("train").info(f"Iter: {self.curr_iteration:4d} {k}: {v:3f}")
+                for k, v in self.loss_dict.items()
+            ]
 
-    def save_previews(self):
-        pass
+        self.loss_dict.clear()  # Remove old keys
+
+    def save_previews(self, log_to_disk: bool = True, log_to_comet: bool = False):
+        """Convert current batch to images and log to comet.ml"""
+
+        self.model.eval()  # ensure no training occurs
+        with torch.no_grad():
+            sr = self.model(self.batch["lr"].to(self.device, non_blocking=True))
+            data = [["SR", sr.detach().cpu().numpy()]]
+            if self.curr_iteration == 0:  # Log LR and HR input and target once
+                data.append(["LR", self.batch["lr"].detach().cpu().numpy()])
+                data.append(["HR", self.batch["hr"].detach().cpu().numpy()])
+
+        for i, (name, batch) in enumerate(data):  # For each resolution data
+            v = 0  # Reset tile index for each Resolution batch
+            for j, d in enumerate(batch):  # For each tensor data in the batch
+                # if log_to_comet:
+                self.exp.log_image(
+                    (255 * (d - d.min()) / (d.max() - d.min())).astype(np.uint8),
+                    name=f"Tile_{cfg.preview_indices[v]}_{name}",
+                    image_scale=1,
+                    step=self.curr_iteration,
+                )
+                v += 1  # Track tile within batch
 
     def forward(self, x):  # pass forward calls to model forward call
         return self.model(x)
@@ -125,11 +159,14 @@ class ArbRDNPlus(BaseModel):
 
         self.optimiser_g = torch.optim.Adam(self.model.parameters(), lr=cfg.max_lr)
         self.scheduler_g = torch.optim.lr_scheduler.OneCycleLR(
-            self.optimiser_g, **cfg.lr_scheduler_opts
+            self.optimiser_g,
+            max_lr=cfg.max_lr,
+            total_steps=cfg.iters_per_epoch * cfg.num_epochs,
+            pct_start=0.3,
         )
 
         self.cri_L1 = nn.L1Loss().to(self.device)
-        self.cri_L1_w = 1
+        self.cri_L1_w = 1  # TODO confirm if its better to wrap as tensor / device
 
     def _forward(self):
         """Apply model on data and calculate loss. Used in both train and val."""
@@ -149,8 +186,9 @@ class ArbRDNPlus(BaseModel):
         self.scaler.scale(self.loss).backward()
         self.scaler.step(self.optimiser_g)
         self.scaler.update()
+        self.scheduler_g.step()
         self.optimiser_g.zero_grad(set_to_none=True)
-        self.loss_dict["Train_L1"] = self.loss_L1.item()
+        self.loss_dict["Loss_Train_L1"] = self.loss_L1.item()
 
     def validate(self):
         """Per iteration, Calculate Validation losses for arbitray scale factor RDN-like model"""
@@ -158,8 +196,7 @@ class ArbRDNPlus(BaseModel):
         with torch.no_grad():
             self._forward()
 
-        self.loss_dict["Val_L1"] = self.loss_L1.item()
-        self.save_metrics()
+        self.loss_dict["Loss_Val_L1"] = self.loss_L1.item()
 
     def set_scale(self, scale: tuple):
         """Set scale factor for model"""
@@ -245,15 +282,20 @@ class ArbRDNPlus_network(nn.Module):
 
         return x3
 
-
 def _weights_init_kaiming(m, scale=1):
     """from https://github.com/ncarraz/ESRGANplus/blob/master/codes/models/networks.py#L30"""
     classname = m.__class__.__name__
     if (classname.find("Conv") != -1) or (classname.find("Linear") != -1):
-        init.kaiming_normal_(m.weight.data, a=0, mode="fan_in")
+        nn.init.kaiming_normal_(m.weight.data, a=0, mode="fan_in")
         m.weight.data *= scale
         if m.bias is not None:
             m.bias.data.zero_()
     elif classname.find("BatchNorm2d") != -1:
-        init.constant_(m.weight.data, 1.0)
-        init.constant_(m.bias.data, 0.0)
+        nn.init.constant_(m.weight.data, 1.0)
+        nn.init.constant_(m.bias.data, 0.0)
+
+class RDNplus(nn.Module):
+    """RDN like model using RRDB blocks, from ESRGAN+"""
+
+
+
