@@ -1,17 +1,15 @@
 name: srvey
 channels:
-  - pytorch
-  - nvidia
   - conda-forge
-  - comet_ml
   - defaults
 dependencies:
   ## Core
   - python
-  - pytorch::pytorch>=1.9
-  - pytorch/win-64::torchvision>=0.10=py39_cu111 # my-hardware specific bug(?)
-  - nvidia::cudatoolkit=11.1
-  - comet_ml
+  - pytorch::pytorch>=1.10
+  # - pytorch/win-64::torchvision>=0.10=py39_cu111 # my-hardware specific bug(?)
+  - pytorch::torchvision>=0.11
+  - nvidia::cudatoolkit=11.3
+  - comet_ml::comet_ml
   - matplotlib
   - numpy
   - verde
