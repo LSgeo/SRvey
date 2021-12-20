@@ -1,2 +1,4 @@
 .comet.config
 *.pyc
+
+experiments/
