@@ -108,7 +108,7 @@ class ArbsrDset(BaseDataset):
             raise FileNotFoundError(f"Could not load HR data from {self.tile_path}")
 
 
-def build_dataloaders(iters_per_epoch=None):
+def build_dataloaders():
     """Returns dataloaders for Training, Validation, and image previews"""
 
     train_dataset = ArbsrDset(Path(cfg.train_tiles_path), augment=True)
@@ -120,7 +120,7 @@ def build_dataloaders(iters_per_epoch=None):
         batch_size=cfg.trn_batch_size,
         pin_memory=True,
         num_workers=cfg.num_workers,
-        shuffle=True,
+        shuffle=False,
         drop_last=True,
     )
     validation_dataloader = DataLoader(

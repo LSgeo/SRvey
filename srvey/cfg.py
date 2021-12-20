@@ -12,7 +12,7 @@ root_tiles_path = Path("/home/luke/srgeo/data_train/HR_20m_LR_80m_train_val_test
 train_tiles_path = root_tiles_path / "train"
 val_tiles_path = root_tiles_path / "val"
 hr_size = 128
-preview_indices = [0, 1, 2, 3]
+preview_indices = [44, 38, 24, 399, 457, 200, 158, 156]
 
 ## Torch Reproducibility
 manual_seed = 21
@@ -25,17 +25,17 @@ cudnn_deterministic = False  # True for final
 tags = []
 
 ## Parameters
-max_lr = 3e-4
+max_lr = 5e-4
 load_d_weights = False
-iters_per_epoch = 5000
-num_epochs = 5
-trn_batch_size = 4
-val_batch_size = 4
-val_freq = 500
-preview_freq = 1000
+num_epochs = 20
+trn_batch_size = 8
+val_batch_size = 8
+iters_per_epoch = 661
+val_freq = 250
+preview_freq = 400
 # preview_indices = preview_indices[:val_batch_size]  # Ensure previews included in Val
 
-num_workers = 0  # 0 on windows platforms, until bugfixed!
+num_workers = 4  # 0 on windows platforms, until bugfixed!
 scheduler_type = "oclr"  # "oclr" or "mslr" or None
 
 ########################### Computed Config ###########################
@@ -78,7 +78,7 @@ class Session:
 
     def _init_log(self):
         logging.basicConfig(
-            level=logging.INFO,
+            level=logging.DEBUG,
             format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
             datefmt="%m-%d %H:%M",
             filename=f"{self.session_dir / 'session.log'}",
