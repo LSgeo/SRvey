@@ -496,6 +496,8 @@ class ResidualDenseBlock_5C(nn.Module):
     Residual Dense Block
     style: 5 convs
     The core module of paper: (Residual Dense Network for Image Super-Resolution, CVPR 18)
+
+    https://github.com/ncarraz/ESRGANplus/blob/master/codes/models/modules/block.py#L232
     """
 
     def __init__(
@@ -620,3 +622,48 @@ class RRDB(nn.Module):
         out = self.RDB2(out)
         out = self.RDB3(out)
         return out.mul(0.2) + x
+
+
+def upconv_block(
+    in_nc,
+    out_nc,
+    upscale_factor=2,
+    kernel_size=3,
+    stride=1,
+    bias=True,
+    pad_type="zero",
+    norm_type=None,
+    act_type="relu",
+    mode="nearest",
+):
+    """ESRGAN+ https://github.com/ncarraz/ESRGANplus/blob/main/codes/models/modules/block.py#L315"""
+    # Up conv
+    # described in https://distill.pub/2016/deconv-checkerboard/
+    upsample = nn.Upsample(scale_factor=upscale_factor, mode=mode)
+    conv = conv_block(
+        in_nc,
+        out_nc,
+        kernel_size,
+        stride,
+        bias=bias,
+        pad_type=pad_type,
+        norm_type=norm_type,
+        act_type=act_type,
+    )
+    return sequential(upsample, conv)
+
+class ShortcutBlock(nn.Module):
+    #Elementwise sum the output of a submodule to its input
+    def __init__(self, submodule):
+        super(ShortcutBlock, self).__init__()
+        self.sub = submodule
+
+    def forward(self, x):
+        output = x + self.sub(x)
+        return output
+
+    def __repr__(self):
+        tmpstr = 'Identity + \n|'
+        modstr = self.sub.__repr__().replace('\n', '\n|')
+        tmpstr = tmpstr + modstr
+        return tmpstr

@@ -82,15 +82,38 @@ class BaseModel(nn.Module):
         self.batch = batch
 
     def train(self):
-        """Base method for training upscaling/generator network"""
-        pass
+        """Train model on a single batch, per iteration"""
+        self.model.train()
+        self._forward()
+
+        self.scaler.scale(self.loss).backward()
+        self.scaler.step(self.optimiser_g)
+        self.scaler.update()
+        self.optimiser_g.zero_grad(set_to_none=True)
+        self.scheduler_g.step()
+        self.loss_dict["Loss_Train_L1"] = self.loss_L1.item()
+
+    def validate(self):
+        """Per iteration, calculate validation losses for model"""
+        self.model.eval()
+        with torch.no_grad():
+            self._forward()
+
+        self.loss_dict["Loss_Val_L1"] = self.loss_L1.item()
+
+    def _forward(self):
+        """Apply model on data and calculate loss. Used in both train and val."""
+        inp = self.batch["lr"].to(self.device)
+        tgt = self.batch["hr"].to(self.device)
+
+        with torch.autocast(self.device.type, enabled=self.use_amp):
+            pred = self.model(inp)
+            self.loss_L1 = self.cri_L1(pred, tgt) * self.cri_L1_w
+            self.loss = self.loss_L1
 
     def train_discriminator(self):
         """Base method for training a discriminator for GAN networks"""
         raise NotImplementedError
-
-    def validate(self):
-        pass
 
     def log_metrics(self, log_to_disk: bool = True, log_to_comet: bool = False):
         """Save metrics to Comet.ml, and/or log locally"""
@@ -104,7 +127,9 @@ class BaseModel(nn.Module):
             )
         if log_to_disk:
             [
-                logging.getLogger("train").info(f"Iter: {self.curr_iteration:4d} {k}: {v:3f}")
+                logging.getLogger("train").info(
+                    f"Iter: {self.curr_iteration:4d} {k}: {v:3f}"
+                )
                 for k, v in self.loss_dict.items()
             ]
 
@@ -117,9 +142,10 @@ class BaseModel(nn.Module):
         with torch.no_grad():
             sr = self.model(self.batch["lr"].to(self.device, non_blocking=True))
             data = [["SR", sr.detach().cpu().numpy()]]
-            if self.curr_iteration == 0:  # Log LR and HR input and target once
-                data.append(["LR", self.batch["lr"].detach().cpu().numpy()])
-                data.append(["HR", self.batch["hr"].detach().cpu().numpy()])
+
+        if self.curr_epoch == self.start_epoch:  # Log LR and HR input and target once
+            data.append(["LR", self.batch["lr"].detach().cpu().numpy()])
+            data.append(["HR", self.batch["hr"].detach().cpu().numpy()])
 
         for i, (name, batch) in enumerate(data):  # For each resolution data
             v = 0  # Reset tile index for each Resolution batch
@@ -148,7 +174,7 @@ class ArbRDNPlus(BaseModel):
     def __init__(self, session):
         super().__init__(session)
         self.scale = None
-        self.model = ArbRDNPlus_network()
+        self.model = ArbRDNPlus_net()
 
         if cfg.pretrained_model:
             self.load_pretrained_model(cfg.pretrained_model)
@@ -168,36 +194,6 @@ class ArbRDNPlus(BaseModel):
         self.cri_L1 = nn.L1Loss().to(self.device)
         self.cri_L1_w = 1  # TODO confirm if its better to wrap as tensor / device
 
-    def _forward(self):
-        """Apply model on data and calculate loss. Used in both train and val."""
-        inp = self.batch["lr"].to(self.device)
-        tgt = self.batch["hr"].to(self.device)
-
-        with torch.autocast(self.device.type, enabled=self.use_amp):
-            pred = self.model(inp)
-            self.loss_L1 = self.cri_L1(pred, tgt) * self.cri_L1_w
-            self.loss = self.loss_L1
-
-    def train(self):
-        """Per iteration, Train arbitray scale factor RDN-like model"""
-        self.model.train()
-        self._forward()
-
-        self.scaler.scale(self.loss).backward()
-        self.scaler.step(self.optimiser_g)
-        self.scaler.update()
-        self.scheduler_g.step()
-        self.optimiser_g.zero_grad(set_to_none=True)
-        self.loss_dict["Loss_Train_L1"] = self.loss_L1.item()
-
-    def validate(self):
-        """Per iteration, Calculate Validation losses for arbitray scale factor RDN-like model"""
-        self.model.eval()
-        with torch.no_grad():
-            self._forward()
-
-        self.loss_dict["Loss_Val_L1"] = self.loss_L1.item()
-
     def set_scale(self, scale: tuple):
         """Set scale factor for model"""
         # is_distributed = False #Not implemented
@@ -212,7 +208,7 @@ class ArbRDNPlus(BaseModel):
         self.model.scale_h = self.model.scale_w = scale[0]  # f"{scale[0]:.1f}"
 
 
-class ArbRDNPlus_network(nn.Module):
+class ArbRDNPlus_net(nn.Module):
     def __init__(
         self,
         in_nc=1,
@@ -282,6 +278,7 @@ class ArbRDNPlus_network(nn.Module):
 
         return x3
 
+
 def _weights_init_kaiming(m, scale=1):
     """from https://github.com/ncarraz/ESRGANplus/blob/master/codes/models/networks.py#L30"""
     classname = m.__class__.__name__
@@ -294,8 +291,103 @@ def _weights_init_kaiming(m, scale=1):
         nn.init.constant_(m.weight.data, 1.0)
         nn.init.constant_(m.bias.data, 0.0)
 
-class RDNplus(nn.Module):
+
+class RDNPlus(BaseModel):
+    def __init__(self, session):
+        super().__init__(session)
+        self.model = RDNPlus_net()
+
+        if cfg.pretrained_model:
+            self.load_pretrained_model(cfg.pretrained_model)
+        else:
+            self.model.apply(functools.partial(_weights_init_kaiming, scale=1))
+
+        self.model.to(self.device)
+
+        self.optimiser_g = torch.optim.Adam(self.model.parameters(), lr=cfg.max_lr)
+        self.scheduler_g = torch.optim.lr_scheduler.OneCycleLR(
+            self.optimiser_g,
+            max_lr=cfg.max_lr,
+            total_steps=cfg.iters_per_epoch * cfg.num_epochs,
+            pct_start=0.3,
+        )
+
+        self.cri_L1 = nn.L1Loss().to(self.device)
+        self.cri_L1_w = 1  # TODO confirm if its better to wrap as tensor / device
+
+    def set_scale(self, *args, **kwargs):
+        """Scale is fixed at 4"""
+        self.scale_h = self.scale_w = self.model.scale_h = self.model.scale_w = 4
+
+
+class RDNPlus_net(nn.Module):
     """RDN like model using RRDB blocks, from ESRGAN+"""
 
+    def __init__(
+        self,
+        in_nc=1,
+        out_nc=1,
+        nf=64,
+        nb=23,
+        gc=32,
+        upscale=4,
+        norm_type=None,
+        act_type="leakyrelu",
+        mode="CNA",
+        upsample_mode="upconv",
+    ):
+        super().__init__()
+        n_upscale = int(math.log(upscale, 2))
+        if upscale == 3:
+            n_upscale = 1
 
+        fea_conv = B.conv_block(in_nc, nf, kernel_size=3, norm_type=None, act_type=None)
 
+        rb_blocks = [
+            B.RRDB(
+                nf,
+                kernel_size=3,
+                gc=gc,
+                stride=1,
+                bias=True,
+                pad_type="zero",
+                norm_type=norm_type,
+                act_type=act_type,
+                mode="CNA",
+            )
+            for _ in range(nb)
+        ]
+
+        LR_conv = B.conv_block(
+            nf, nf, kernel_size=3, norm_type=norm_type, act_type=None, mode=mode
+        )
+
+        if upsample_mode == "upconv":
+            upsample_block = B.upconv_block
+        else:
+            raise NotImplementedError(f"upsample mode [{upsample_mode}] is not found")
+        if upscale == 3:
+            upsampler = upsample_block(nf, nf, 3, act_type=act_type)
+        else:
+            upsampler = [
+                upsample_block(nf, nf, act_type=act_type) for _ in range(n_upscale)
+            ]
+
+        HR_conv0 = B.conv_block(
+            nf, nf, kernel_size=3, norm_type=None, act_type=act_type
+        )
+        HR_conv1 = B.conv_block(
+            nf, out_nc, kernel_size=3, norm_type=None, act_type=None
+        )
+
+        self.model = B.sequential(
+            fea_conv,
+            B.ShortcutBlock(B.sequential(*rb_blocks, LR_conv)),
+            *upsampler,
+            HR_conv0,
+            HR_conv1,
+        )
+
+    def forward(self, x):
+        x = self.model(x)
+        return x

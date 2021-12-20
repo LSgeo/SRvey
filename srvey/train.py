@@ -12,6 +12,7 @@ def main():
             iters_per_epoch=cfg.iters_per_epoch
         )
         model = net.ArbRDNPlus(session)
+        # model = net.RDNPlus(session)
 
         for epoch_num in range(model.start_epoch, model.num_epochs):
             session.begin_epoch(epoch_num)
