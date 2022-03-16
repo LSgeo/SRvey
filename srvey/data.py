@@ -20,13 +20,16 @@ class BaseDataset(Dataset):
         self.hr_size = cfg.hr_size
 
         self._get_npy_data()
-        self._len = len(self.data[self.hr_key])
+
+        print(self._len)
 
     def _get_npy_data(self, search="**/*.npy"):
         for f in Path(self.tile_path).glob(search):
+            print(f.stem)
             self.data[f"{f.stem}"] = np.load(f, mmap_mode="c").astype(np.float32)
             if "hr" in f.stem.lower():
                 self.hr_key = f"{f.stem}"
+                self._len = len(self.data[f"{f.stem}"])
             if "lr" in f.stem.lower():
                 self.lr_key = f"{f.stem}"
         logging.getLogger("data").info(f"Found {self.data.keys()} in {self.tile_path}")
@@ -67,8 +70,8 @@ class ArbsrDset(BaseDataset):
     These data are float32 single channel, and their resolution are fixed
     at n times different to "hr". 1 / [2, 2.5,  3,  4,  5]
     For tiles, this means HR 240, LR [120, 96, 80, 60, 48] pixels in each dim.
-    Train, Val, and Test data are organised into folders appended by "xxx",
-    indicating their resolution.
+    Train, Val, and Test data are organised into folders appended by "x.y",
+    indicating their decimal scale factor.
 
     We include all available file paths for each optioned scale in a dictionary,
     load the memmapped numpy arrays into another dictionary, and access them
@@ -85,10 +88,17 @@ class ArbsrDset(BaseDataset):
 
         super().__init__(tile_path, augment)
 
-        self.max = 14051.333
-        self.min = -4403.574
-        self.mean = -26.282
-        self.std = 224.668
+        # Old WA Tile Dataset
+        # self.max = 14051.333
+        # self.min = -4403.574
+        # self.mean = -26.282
+        # self.std = 224.668
+
+        # P738 LR training tiles, rounded to larger magnitude
+        self.max = 213
+        self.min = -315
+        self.mean = -38
+        self.std = 40
 
     def set_scale(self, scale: tuple):
         """Set scale factor to load next iteration"""
@@ -97,31 +107,38 @@ class ArbsrDset(BaseDataset):
         self.curr_scale = scale[0]
         self.lr_key = f"{self.curr_scale:.1f}"
 
-    def _get_npy_data(self, search="**/*.npy"):
+    def _get_npy_data(self, search="*.npy"):
         for f in Path(self.tile_path).glob(search):
-            scale = f"{cfg.hr_size / int(f.stem.split('_')[-1]):.1f}"
+            scale = f"{f.stem.split('_')[-1].replace('-', '.')}"
             self.data[scale] = np.load(f, mmap_mode="c").astype(np.float32)
             self.scales.append(scale)
 
+        self._len = len(self.data["1.0"])
+
+        if not self.tile_path.exists():
+            raise FileNotFoundError(f"{self.tile_path} does not exist!")
         logging.getLogger("data").info(f"Found {self.data.keys()} in {self.tile_path}")
-        if not self.data["1.0"].any():
+        if not self.data.get("1.0").any():
             raise FileNotFoundError(f"Could not load HR data from {self.tile_path}")
 
 
-def build_dataloaders():
+def build_dataloaders(shuffle=True):
     """Returns dataloaders for Training, Validation, and image previews"""
 
     train_dataset = ArbsrDset(Path(cfg.train_tiles_path), augment=True)
     val_dataset = ArbsrDset(Path(cfg.val_tiles_path))
     preview_dataset = Subset(val_dataset, cfg.preview_indices)
+    logging.getLogger("data").info(f"{len(train_dataset)=}")
+    logging.getLogger("data").info(f"{len(val_dataset)=}")
+    logging.getLogger("data").info(f"{len(preview_dataset)=}")
 
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=cfg.trn_batch_size,
         pin_memory=True,
         num_workers=cfg.num_workers,
-        shuffle=False,
-        drop_last=True,
+        shuffle=shuffle,
+        drop_last=False,
     )
     validation_dataloader = DataLoader(
         val_dataset,
@@ -137,4 +154,3 @@ def build_dataloaders():
     )
 
     return train_dataloader, validation_dataloader, preview_dataloader
-
