@@ -2,6 +2,7 @@ import functools
 import logging
 import math
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -19,6 +20,7 @@ class BaseModel(nn.Module):
 
         self.session = session
         self.exp = session.experiment
+        self.model = ArbRDNPlus_net  ## for method linting, this is overwritten
 
         self.device = cfg.device
         self.use_amp = cfg.use_amp and "cuda" in cfg.device.type
@@ -26,8 +28,8 @@ class BaseModel(nn.Module):
 
         self.num_epochs = cfg.num_epochs
         self.start_epoch = 0
-        self.curr_epoch = 0
-        self.curr_iteration = -1  # iterate iteration counter at start of loop
+        self.curr_epoch = -1  # iterate at start of loop, start 0
+        self.curr_iteration = -1
 
         self.model_out_path = session.session_dir / "model"
         self.model_out_path.mkdir(exist_ok=True, parents=True)
@@ -35,7 +37,7 @@ class BaseModel(nn.Module):
         self.loss_dict = {}
         self.metric_dict = {}
 
-    def save_model(self, for_inference_only: bool = True):
+    def save_model(self, name=None, for_inference_only: bool = True):
         """Save model state for inference / continuation
 
         Args:
@@ -44,12 +46,14 @@ class BaseModel(nn.Module):
         """
 
         if for_inference_only:
+            filename = name or f"inference_model_{self.curr_iteration}.pth"
             torch.save(
                 self.model.state_dict(),
-                self.model_out_path / f"inference_model_{self.curr_iteration}.pth",
+                self.model_out_path / filename,
             )
             # logging.info(f"Saved model for inference to {self.model_out_path}")
         else:
+            filename = name or f"full_model_epoch_{self.curr_epoch:05}.tar"
             torch.save(
                 {
                     # "comet_experiment": self.experiment.get_key(),
@@ -59,23 +63,46 @@ class BaseModel(nn.Module):
                     # "net_d": self.discriminator.state_dict(),
                     "optimiser_g": self.optimiser_g.state_dict(),
                     # "optimiser_d": self.optimiser_d.state_dict(),
+                    "scheduler_g": self.scheduler_g.state_dict(),  # TODO
+                    # "scheduler_d": self.scheduler_d.state_dict(), TODO these may be matched
                 },
-                self.model_out_path / f"full_model_epoch_{self.curr_epoch:05}.tar",
+                self.model_out_path / filename,
             )
             # logging.info(f"Saved model and training state to {self.model_out_path}")
 
-    def load_pretrained_model(self, checkpoint):
-        """Load a model checkpoint for continuation or inference"""
-        # logging.info(
-        #     f"Loading saved model from epoch {cfg.train_from_epoch} of experiment {cfg.pretrained_experiment}"
-        # )
-        self.model.load_state_dict(checkpoint["net_g"])
-        self.optimiser_g.load_state_dict(checkpoint["optimiser_g"])
-        self.model.to(self.device)  # TODO ? self.model = self.model.to....
+    def load_pretrained_model(self, pretrained_experiment, from_epoch=-1):
+        """Load a model checkpoint for continuation or inference
+
+        model_pth: Experiment ID of previous experiment, to search in local
+        experiments directory.
+        """
+        try:
+            saved_model_dir = next(Path().glob(f"**/*{pretrained_experiment}*"))
+            saved_model_path = sorted(list(saved_model_dir.glob("**/*.tar")))[
+                from_epoch
+            ]
+            logging.info(
+                f"Loading experiment {pretrained_experiment}, epoch: {from_epoch}"
+            )
+            # from_epoch = saved_model_path.as_posix()[-9:-4]
+        except:
+            raise FileNotFoundError(
+                f"Files for experiment {pretrained_experiment} were not found on this device"
+            )
+
+        checkpoint = torch.load(saved_model_path, map_location=self.device)
         self.curr_iteration = checkpoint["iteration"]
         self.start_epoch = checkpoint["epoch"]
-
-        self.validate()
+        self.num_epochs += cfg.num_epochs  # Add more epochs
+        self.optimiser_g.load_state_dict(checkpoint["optimiser_g"])
+        self.scheduler_g = torch.optim.lr_scheduler.OneCycleLR(
+            self.optimiser_g,
+            max_lr=cfg.max_lr,
+            total_steps=cfg.iters_per_epoch * cfg.num_epochs,
+        )  # Make new OCLR scheduler - this is like a warm restart? Maybe?
+        # .load_state_dict(checkpoint["scheduler_g"]) # TODO add more iters to scheduler?
+        self.model.load_state_dict(checkpoint["net_g"])
+        self.model.to(self.device)  # TODO ? self.model = self.model.to....
 
     def feed_data(self, batch):
         """Load data"""
@@ -92,6 +119,11 @@ class BaseModel(nn.Module):
         self.optimiser_g.zero_grad(set_to_none=True)
         self.scheduler_g.step()
         self.loss_dict["Loss_Train_L1"] = self.loss_L1.item()
+        self.loss_dict["Train_PSNR"] = self._calc_psnr()
+
+    def train_discriminator(self):
+        """Base method for training a discriminator for GAN networks"""
+        raise NotImplementedError
 
     def validate(self):
         """Per iteration, calculate validation losses for model"""
@@ -100,6 +132,7 @@ class BaseModel(nn.Module):
             self._forward()
 
         self.loss_dict["Loss_Val_L1"] = self.loss_L1.item()
+        self.loss_dict["Val_PSNR"] = self._calc_psnr()
 
     def _forward(self):
         """Apply model on data and calculate loss. Used in both train and val."""
@@ -111,9 +144,12 @@ class BaseModel(nn.Module):
             self.loss_L1 = self.cri_L1(pred, tgt) * self.cri_L1_w
             self.loss = self.loss_L1
 
-    def train_discriminator(self):
-        """Base method for training a discriminator for GAN networks"""
-        raise NotImplementedError
+            self.metric_mse = self.mse(pred, tgt)
+
+    def _calc_psnr(self, value_range_squared=1.0):
+        if self.metric_mse == 0:
+            return float("inf")
+        return 10 * np.log10(value_range_squared / self.metric_mse.item())
 
     def log_metrics(self, log_to_disk: bool = True, log_to_comet: bool = False):
         """Save metrics to Comet.ml, and/or log locally"""
@@ -123,7 +159,7 @@ class BaseModel(nn.Module):
             self.exp.log_metric("Current LR", self.scheduler_g.get_last_lr())
             self.exp.log_metric(
                 "Seconds per step",
-                (time.perf_counter() - cfg.t0) / (self.curr_iteration + 1),
+                (time.perf_counter() - cfg.t0) / (self.curr_iteration + 2),
             )
         if log_to_disk:
             [
@@ -142,10 +178,11 @@ class BaseModel(nn.Module):
         with torch.no_grad():
             sr = self.model(self.batch["lr"].to(self.device, non_blocking=True))
             data = [["SR", sr.detach().cpu().numpy()]]
-
-        if self.curr_epoch == self.start_epoch:  # Log LR and HR input and target once
-            data.append(["LR", self.batch["lr"].detach().cpu().numpy()])
-            data.append(["HR", self.batch["hr"].detach().cpu().numpy()])
+            if (
+                self.curr_epoch == self.start_epoch
+            ):  # Log LR and HR input and target once
+                data.append(["LR", self.batch["lr"].detach().cpu().numpy()])
+                data.append(["HR", self.batch["hr"].detach().cpu().numpy()])
 
         for i, (name, batch) in enumerate(data):  # For each resolution data
             v = 0  # Reset tile index for each Resolution batch
@@ -175,12 +212,6 @@ class ArbRDNPlus(BaseModel):
         super().__init__(session)
         self.scale = None
         self.model = ArbRDNPlus_net()
-
-        if cfg.pretrained_model:
-            self.load_pretrained_model(cfg.pretrained_model)
-        else:
-            self.model.apply(functools.partial(_weights_init_kaiming, scale=1))
-
         self.model.to(self.device)
 
         self.optimiser_g = torch.optim.Adam(self.model.parameters(), lr=cfg.max_lr)
@@ -191,8 +222,9 @@ class ArbRDNPlus(BaseModel):
             pct_start=0.3,
         )
 
+        self.mse = nn.MSELoss().to(self.device)  # Used for PSNR, not in .backward()
         self.cri_L1 = nn.L1Loss().to(self.device)
-        self.cri_L1_w = 1  # TODO confirm if its better to wrap as tensor / device
+        self.cri_L1_w = 1.0
 
     def set_scale(self, scale: tuple):
         """Set scale factor for model"""
@@ -279,29 +311,23 @@ class ArbRDNPlus_net(nn.Module):
         return x3
 
 
-def _weights_init_kaiming(m, scale=1):
-    """from https://github.com/ncarraz/ESRGANplus/blob/master/codes/models/networks.py#L30"""
-    classname = m.__class__.__name__
-    if (classname.find("Conv") != -1) or (classname.find("Linear") != -1):
-        nn.init.kaiming_normal_(m.weight.data, a=0, mode="fan_in")
-        m.weight.data *= scale
-        if m.bias is not None:
-            m.bias.data.zero_()
-    elif classname.find("BatchNorm2d") != -1:
-        nn.init.constant_(m.weight.data, 1.0)
-        nn.init.constant_(m.bias.data, 0.0)
+# def _weights_init_kaiming(m, scale=1):
+#     """from https://github.com/ncarraz/ESRGANplus/blob/master/codes/models/networks.py#L30"""
+#     classname = m.__class__.__name__
+#     if (classname.find("Conv") != -1) or (classname.find("Linear") != -1):
+#         nn.init.kaiming_normal_(m.weight.data, a=0, mode="fan_in")
+#         m.weight.data *= scale
+#         if m.bias is not None:
+#             m.bias.data.zero_()
+#     elif classname.find("BatchNorm2d") != -1:
+#         nn.init.constant_(m.weight.data, 1.0)
+#         nn.init.constant_(m.bias.data, 0.0)
 
 
 class RDNPlus(BaseModel):
     def __init__(self, session):
         super().__init__(session)
         self.model = RDNPlus_net()
-
-        if cfg.pretrained_model:
-            self.load_pretrained_model(cfg.pretrained_model)
-        else:
-            self.model.apply(functools.partial(_weights_init_kaiming, scale=1))
-
         self.model.to(self.device)
 
         self.optimiser_g = torch.optim.Adam(self.model.parameters(), lr=cfg.max_lr)
@@ -309,11 +335,12 @@ class RDNPlus(BaseModel):
             self.optimiser_g,
             max_lr=cfg.max_lr,
             total_steps=cfg.iters_per_epoch * cfg.num_epochs,
-            pct_start=0.3,
+            # pct_start=0.3,
         )
 
         self.cri_L1 = nn.L1Loss().to(self.device)
         self.cri_L1_w = 1  # TODO confirm if its better to wrap as tensor / device
+        self.mse = nn.MSELoss().to(self.device)  # Used for PSNR, not in .backward()
 
     def set_scale(self, *args, **kwargs):
         """Scale is fixed at 4"""
@@ -337,6 +364,7 @@ class RDNPlus_net(nn.Module):
         upsample_mode="upconv",
     ):
         super().__init__()
+
         n_upscale = int(math.log(upscale, 2))
         if upscale == 3:
             n_upscale = 1

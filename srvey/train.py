@@ -6,14 +6,18 @@ import networks as net
 def main():
     session = cfg.Session()
 
-    if True:  # try:
+    try:
         train_dataloader, val_dataloader, preview_dataloader = data.build_dataloaders()
-        model = net.ArbRDNPlus(session)
-        # model = net.RDNPlus(session)
+        # model = net.ArbRDNPlus(session) # Arbitrary scale sr
+        model = net.RDNPlus(session)  # Locked 4x sr
+        if cfg.pretrained_model:
+            # model.load_pretrained_model(cfg.pretrained_model)
+            raise NotImplementedError  # TODO
 
         for epoch_num in range(model.start_epoch, model.num_epochs):
             session.begin_epoch(epoch_num)
             model.curr_epoch += 1
+            # Validate first if loading pre-trained model TODO
 
             for iter_num, batch in enumerate(train_dataloader):
                 if iter_num > cfg.iters_per_epoch:
@@ -29,22 +33,26 @@ def main():
                 if iter_num % 100 == 0 and iter_num != 0:
                     model.log_metrics(log_to_comet=True)
 
-            # if True: # iter_num % cfg.val_freq == 0 and iter_num != 0:
-            for batch in val_dataloader:
-                model.feed_data(batch)
-                model.validate()
-                model.log_metrics(log_to_comet=True)
+            if epoch_num % cfg.val_freq == 0:  # or cfg.pretrained_model:
+                for batch in val_dataloader:
+                    model.feed_data(batch)
+                    model.validate()
+                    model.log_metrics(log_to_comet=True)
 
-            # if True:# iter_num % cfg.preview_freq == 0:
-            for batch in preview_dataloader:
-                model.feed_data(batch)
-                model.save_previews(log_to_comet=True)
+            if epoch_num % cfg.preview_freq == 0:
+                for batch in preview_dataloader:
+                    model.feed_data(batch)
+                    model.save_previews(log_to_comet=True)
+
+            if epoch_num % cfg.checkpoint_freq == 0:
+                model.save_model(for_inference_only=False)
 
     # except Exception as E:
     #     print(repr(E))
 
-    # finally:
-    #     session.end()
+    finally:
+        model.save_model(name=f"final_epoch_{epoch_num}.tar", for_inference_only=False)
+        session.end()
 
 
 if __name__ == "__main__":
