@@ -325,7 +325,7 @@ class ArbRDNPlus_net(nn.Module):
 
 
 class RDNPlus(BaseModel):
-    def __init__(self, session):
+    def __init__(self, session, total_steps):
         super().__init__(session)
         self.model = RDNPlus_net()
         self.model.to(self.device)
@@ -334,7 +334,7 @@ class RDNPlus(BaseModel):
         self.scheduler_g = torch.optim.lr_scheduler.OneCycleLR(
             self.optimiser_g,
             max_lr=cfg.max_lr,
-            total_steps=cfg.iters_per_epoch * cfg.num_epochs,
+            total_steps=total_steps,
             # pct_start=0.3,
         )
 

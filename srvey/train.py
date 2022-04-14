@@ -6,13 +6,13 @@ import networks as net
 def main():
     session = cfg.Session()
 
-    try:
+    # try:
+    if 1:
         train_dataloader, val_dataloader, preview_dataloader = data.build_dataloaders()
         # model = net.ArbRDNPlus(session) # Arbitrary scale sr
-        model = net.RDNPlus(session)  # Locked 4x sr
+        model = net.RDNPlus(session, len(train_dataloader) * cfg.num_epochs)  # Locked 4x sr
         if cfg.pretrained_model:
-            # model.load_pretrained_model(cfg.pretrained_model)
-            raise NotImplementedError  # TODO
+            model.load_pretrained_model(cfg.pretrained_model)
 
         for epoch_num in range(model.start_epoch, model.num_epochs):
             session.begin_epoch(epoch_num)
@@ -20,8 +20,8 @@ def main():
             # Validate first if loading pre-trained model TODO
 
             for iter_num, batch in enumerate(train_dataloader):
-                if iter_num > cfg.iters_per_epoch:
-                    break
+                # if iter_num > cfg.iters_per_epoch:
+                #     break
                 model.curr_iteration += 1
                 scale = (4, 4)
                 model.set_scale(scale)
@@ -30,7 +30,7 @@ def main():
                 model.feed_data(batch)
                 model.train()
 
-                if iter_num % 100 == 0 and iter_num != 0:
+                if iter_num % cfg.metric_freq == 0 and iter_num != 0:
                     model.log_metrics(log_to_comet=True)
 
             if epoch_num % cfg.val_freq == 0:  # or cfg.pretrained_model:
@@ -50,8 +50,9 @@ def main():
     # except Exception as E:
     #     print(repr(E))
 
-    finally:
-        model.save_model(name=f"final_epoch_{epoch_num}.tar", for_inference_only=False)
+    # finally:
+    if 1:
+        # model.save_model(name=f"final_epoch_{epoch_num}.tar", for_inference_only=False)
         session.end()
 
 

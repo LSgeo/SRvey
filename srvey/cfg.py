@@ -8,33 +8,33 @@ use_comet = True and not debug
 pretrained_model = None
 train_from_epoch = -1  # specify epoch to train from, -1 for final
 # root_tiles_path = Path("/home/luke/srgeo/data_train/HR_20_LR_80_edge_padded")
-root_tiles_path = Path("D:/luke/SRvey/data_train/P738")
+root_tiles_path = Path("C:\Luke\data\Paper_2\hr240_combined_norm\hr_240_combined_norm")
 train_tiles_path = root_tiles_path / "train"
 val_tiles_path = root_tiles_path / "val"
-hr_size = 256
+hr_size = 240
 # preview_indices = [44, 38, 24, 399, 457, 200, 158, 156]
-preview_indices = range(6)  # [6, 18, 20, 23, 24, 30, 38, 44, 46, 48]
+preview_indices = range(4)  # [6, 18, 20, 23, 24, 30, 38, 44, 46, 48]
 
 ## Torch config
 manual_seed = 21
 use_amp = True
-cudnn_benchmark = False  # False for reproducibility
-cudnn_deterministic = True  # True for reproducibility
+reproducibile = True
 
 ## Cometl.ml setup
 # api_key and config recorded in .comet.config
-tags = [root_tiles_path.stem]
+tags = [root_tiles_path.stem, "Laplace Normalised"]
 
 ## Parameters
-max_lr = 2e-4
+max_lr = 4e-4
 load_d_weights = False
-num_epochs = 40000
-trn_batch_size = 16
+num_epochs = 10
+trn_batch_size = 2
 val_batch_size = len(preview_indices)
-iters_per_epoch = 64
+# iters_per_epoch = 64
+metric_freq = 10  # iterations
 val_freq = 50  # epochs
-preview_freq = 2000
-checkpoint_freq = 4000
+preview_freq = 200  # epochs
+checkpoint_freq = 2000  # epochs
 # preview_indices = preview_indices[:val_batch_size]  # Ensure previews included in Val
 
 num_workers = 0  # 0 on windows platforms, until bugfixed! Maybe?
@@ -53,8 +53,8 @@ import time
 np.seterr(all="raise")
 device = torch.device("cuda")
 torch.manual_seed(manual_seed)
-torch.backends.cudnn.benchmark = cudnn_benchmark
-torch.backends.cudnn.deterministic = cudnn_deterministic
+torch.backends.cudnn.benchmark = not reproducibile
+torch.backends.cudnn.deterministic = reproducibile
 
 root = Path()
 t0 = time.perf_counter()
@@ -93,14 +93,14 @@ class Session:
                 "Preview tiles": preview_indices,
                 "Seed": manual_seed,
                 "AMP enabled": use_amp,
-                "Benchmark mode": cudnn_benchmark,
-                "Deterministic mode": cudnn_deterministic,
+                "Benchmark mode": not reproducibile,
+                "Deterministic mode": reproducibile,
                 "Max LR": max_lr,
                 "Load discriminator weights": load_d_weights,
                 "Number of epochs": num_epochs,
                 "Batch size Train": trn_batch_size,
                 "Batch size Validation": val_batch_size,
-                "Iterations per epoch": iters_per_epoch,
+                # "Iterations per epoch": iters_per_epoch,
                 "Validation frequency": val_freq,
                 "Preview frequency": preview_freq,
                 "Checkpoint frequency": checkpoint_freq,
