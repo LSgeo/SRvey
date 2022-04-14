@@ -1,8 +1,8 @@
 import logging
 from pathlib import Path
 
-
 import numpy as np
+import tifffile
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 
@@ -19,7 +19,8 @@ class BaseDataset(Dataset):
         self.tile_path = Path(tile_path)
         self.hr_size = cfg.hr_size
 
-        self._get_npy_data()
+        # self._get_npy_data()
+        self._get_tif_data()
 
         print(self._len)
 
@@ -34,7 +35,23 @@ class BaseDataset(Dataset):
                 self.lr_key = f"{f.stem}"
         logging.getLogger("data").info(f"Found {self.data.keys()} in {self.tile_path}")
 
-    def min_max_norm(self, tile):
+    def _get_tif_data(self, search="**/*.tif"):
+        self.hr_key = "hr"
+        self.lr_key = "lr"
+        self.data[self.hr_key] = []
+        self.data[self.lr_key] = []
+
+        for f in Path(self.tile_path).glob(search):
+            self.data[f"{f.parts[-2].lower()}"].append(
+                tifffile.imread(f).astype(np.float32)
+            )
+
+        self._len = len(self.data[self.hr_key])
+        logging.getLogger("data").info(
+            f"Found {self._len} files in {self.data.keys()} in {self.tile_path}"
+        )
+
+    def _min_max_norm(self, tile):
         return (tile - self.min) / (self.max - self.min)
 
     def __len__(self):
@@ -43,12 +60,8 @@ class BaseDataset(Dataset):
     def __getitem__(self, index):
         tile_hr = self.data[self.hr_key][index].astype(np.float32)
         tile_lr = self.data[self.lr_key][index].astype(np.float32)
-
-        tile_hr = self.min_max_norm(tile_hr)
-        tile_lr = self.min_max_norm(tile_lr)
-
-        tile_hr = torch.as_tensor(tile_hr, dtype=torch.float32)
-        tile_lr = torch.as_tensor(tile_lr, dtype=torch.float32)
+        tile_hr = torch.as_tensor(tile_hr, dtype=torch.float32).unsqueeze(0)
+        tile_lr = torch.as_tensor(tile_lr, dtype=torch.float32).unsqueeze(0)
 
         if self.augment:
             if torch.rand(1) < 0.5:
@@ -58,10 +71,28 @@ class BaseDataset(Dataset):
                 tile_hr = tile_hr.flip(-2)  # vflip
                 tile_lr = tile_lr.flip(-2)
             if torch.rand(1) < 0.5:
-                tile_hr = tile_hr.rot90(1, [1, 2])  # rotate CHW Tensor CCW
-                tile_lr = tile_lr.rot90(1, [1, 2])  # Tensor is not batched yet
+                tile_hr = tile_hr.rot90(1, [-2, -1])  # rotate CHW Tensor CCW
+                tile_lr = tile_lr.rot90(1, [-2, -1])  # Tensor is not batched yet
 
         return {"hr": tile_hr, "lr": tile_lr}
+
+
+class MyDset(BaseDataset):
+    """Quick tiff version of base dataset for ESRGAN RDN test with normalised data"""
+
+    def __init__(self, tile_path, augment: bool = False):
+        self.hr_key = "hr"
+        self.scales = []
+        self.set_scale((4, 4))
+
+        super().__init__(tile_path, augment)
+
+    def set_scale(self, scale: tuple):
+        """Set scale factor to load next iteration"""
+        if scale[0] != scale[1]:
+            raise NotImplementedError
+        self.curr_scale = scale[0]
+        self.lr_key = "lr"
 
 
 class ArbsrDset(BaseDataset):
@@ -94,11 +125,11 @@ class ArbsrDset(BaseDataset):
         # self.mean = -26.282
         # self.std = 224.668
 
-        # P738 LR training tiles, rounded to larger magnitude
-        self.max = 213
-        self.min = -315
-        self.mean = -38
-        self.std = 40
+        # # P738 LR training tiles, rounded to larger magnitude
+        # self.max = 213
+        # self.min = -315
+        # self.mean = -38
+        # self.std = 40
 
     def set_scale(self, scale: tuple):
         """Set scale factor to load next iteration"""
@@ -125,8 +156,8 @@ class ArbsrDset(BaseDataset):
 def build_dataloaders(shuffle=True):
     """Returns dataloaders for Training, Validation, and image previews"""
 
-    train_dataset = ArbsrDset(Path(cfg.train_tiles_path), augment=True)
-    val_dataset = ArbsrDset(Path(cfg.val_tiles_path))
+    train_dataset = MyDset(Path(cfg.train_tiles_path), augment=True)
+    val_dataset = MyDset(Path(cfg.val_tiles_path))
     preview_dataset = Subset(val_dataset, cfg.preview_indices)
     logging.getLogger("data").info(f"{len(train_dataset)=}")
     logging.getLogger("data").info(f"{len(val_dataset)=}")
