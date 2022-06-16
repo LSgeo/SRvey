@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-import blocks as B
+import blocks_RDN as B
 import cfg
 
 
