@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, Subset
 
 import cfg
+from mlnoddy.datasets import HRLRNoddyDataset
 
 
 class BaseDataset(Dataset):
@@ -153,35 +154,37 @@ class ArbsrDset(BaseDataset):
             raise FileNotFoundError(f"Could not load HR data from {self.tile_path}")
 
 
-def build_dataloaders(shuffle=True):
+def build_dataloaders():
     """Returns dataloaders for Training, Validation, and image previews"""
 
-    train_dataset = MyDset(Path(cfg.train_tiles_path), augment=True)
-    val_dataset = MyDset(Path(cfg.val_tiles_path))
+    train_dataset = HRLRNoddyDataset(cfg.train_tiles_path, **cfg.dataset_kwargs)
+    val_dataset = HRLRNoddyDataset(cfg.val_tiles_path, **cfg.dataset_kwargs)
     preview_dataset = Subset(val_dataset, cfg.preview_indices)
+
     logging.getLogger("data").info(f"{len(train_dataset)=}")
     logging.getLogger("data").info(f"{len(val_dataset)=}")
     logging.getLogger("data").info(f"{len(preview_dataset)=}")
 
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=cfg.trn_batch_size,
         pin_memory=True,
+        batch_size=cfg.trn_batch_size,
         num_workers=cfg.num_workers,
-        shuffle=shuffle,
+        shuffle=cfg.shuffle,
         drop_last=False,
     )
     validation_dataloader = DataLoader(
         val_dataset,
-        batch_size=cfg.val_batch_size,
         pin_memory=True,
+        batch_size=cfg.val_batch_size,
         num_workers=cfg.num_workers,
+        persistent_workers=bool(cfg.num_workers),
         shuffle=False,
     )
     preview_dataloader = DataLoader(
         preview_dataset,
-        batch_size=min(cfg.val_batch_size, len(preview_dataset)),
         pin_memory=True,
+        batch_size=min(cfg.val_batch_size, len(preview_dataset)),
     )
 
     return train_dataloader, validation_dataloader, preview_dataloader

@@ -1,44 +1,53 @@
-########################## User Input Config ##########################
 from pathlib import Path
 
-debug = False
-colab = False
-use_comet = True and not debug
-
+########################## User Input Config ##########################
 pretrained_model = None
 train_from_epoch = -1  # specify epoch to train from, -1 for final
-# root_tiles_path = Path("/home/luke/srgeo/data_train/HR_20_LR_80_edge_padded")
-root_tiles_path = Path("C:\Luke\data\Paper_2\hr240_combined_norm\hr_240_combined_norm")
+
+root_tiles_path = Path("noddyverse_data")
 train_tiles_path = root_tiles_path / "train"
 val_tiles_path = root_tiles_path / "val"
-hr_size = 240
-# preview_indices = [44, 38, 24, 399, 457, 200, 158, 156]
+
+dataset_kwargs = {
+    "load_magnetics": True,
+    "load_gravity": False,
+    "load_geology": False,
+    "augment": False,
+    "scale": 2,
+    "line_spacing": None,
+    "sample_spacing": None,
+    "heading": None,
+}
+
+hr_size = 200
 preview_indices = range(4)  # [6, 18, 20, 23, 24, 30, 38, 44, 46, 48]
 
 ## Torch config
 manual_seed = 21
 use_amp = True
-reproducibile = True
+reproducibile_mode = True
 
 ## Cometl.ml setup
 # api_key and config recorded in .comet.config
-tags = [root_tiles_path.stem, "Laplace Normalised"]
+tags = [root_tiles_path.stem]
 
 ## Parameters
 max_lr = 4e-4
 load_d_weights = False
 num_epochs = 10
+shuffle = False  # Need to use a sampler for this number of samples.
+
 trn_batch_size = 2
 val_batch_size = len(preview_indices)
-# iters_per_epoch = 64
+
 metric_freq = 10  # iterations
 val_freq = 50  # epochs
 preview_freq = 200  # epochs
 checkpoint_freq = 2000  # epochs
 # preview_indices = preview_indices[:val_batch_size]  # Ensure previews included in Val
 
-num_workers = 0  # 0 on windows platforms, until bugfixed! Maybe?
-scheduler_type = "oclr"  # "oclr" or "mslr" or None
+num_workers = 0
+scheduler_type = "mslr"  # "oclr" or "mslr" or None
 
 ########################### Computed Config ###########################
 from datetime import datetime
@@ -53,8 +62,8 @@ import time
 np.seterr(all="raise")
 device = torch.device("cuda")
 torch.manual_seed(manual_seed)
-torch.backends.cudnn.benchmark = not reproducibile
-torch.backends.cudnn.deterministic = reproducibile
+torch.backends.cudnn.benchmark = not reproducibile_mode
+torch.use_deterministic_algorithms(reproducibile_mode)
 
 root = Path()
 t0 = time.perf_counter()
@@ -63,12 +72,10 @@ t0 = time.perf_counter()
 class Session:
     """Create folder structure, create comet experiment"""
 
-    def __init__(self):
+    def __init__(self, debug=False):
         self.experiment = Experiment()
         self.session_id = (
-            "Session_" + datetime.now().strftime("%y%m%d-%H%M")
-            if not debug
-            else "debug"
+            "debug" if debug else "Session_" + datetime.now().strftime("%y%m%d-%H%M")
         )
         self.session_dir = (
             root
@@ -90,11 +97,11 @@ class Session:
         self.experiment.log_parameters(
             {
                 "HR tile size": hr_size,
-                "Preview tiles": preview_indices,
+                "Preview indices": preview_indices,
                 "Seed": manual_seed,
                 "AMP enabled": use_amp,
-                "Benchmark mode": not reproducibile,
-                "Deterministic mode": reproducibile,
+                "Benchmark mode": not reproducibile_mode,
+                "Deterministic mode": reproducibile_mode,
                 "Max LR": max_lr,
                 "Load discriminator weights": load_d_weights,
                 "Number of epochs": num_epochs,
@@ -127,6 +134,7 @@ class Session:
         logging.getLogger("").addHandler(console)
 
         self.train_log = logging.getLogger("train")
+        self.train_log.info("Initialised logging")
 
     def begin_epoch(self, epoch):
         """Hook for beginning an epoch"""
@@ -135,4 +143,4 @@ class Session:
 
     def end(self):
         self.experiment.end()
-        self.train_log.info("Finished.")
+        self.train_log.info(f"Finished in {time.perf_counter() - t0} seconds.")
