@@ -1,3 +1,9 @@
+""" SRvey 
+
+Here I collect functions such as the Session handler, and set "run-time" 
+options like seeds, deterministic mode, etc.
+"""
+print(f"Loading {__name__}")
 from pathlib import Path
 from datetime import datetime
 import logging
@@ -7,24 +13,25 @@ import numpy as np
 import torch
 import time
 
-import cfg
+import srvey.cfg as cfg
 
 # Config
-np.seterr(all="raise")
-device = torch.device("cuda")
-torch.manual_seed(cfg.manual_seed)
-torch.backends.cudnn.benchmark = not cfg.reproducibile_mode
-torch.use_deterministic_algorithms(cfg.reproducibile_mode)
-
-root = Path()
-t0 = time.perf_counter()
 
 
 class Session:
     """Create folder structure, create comet experiment"""
 
     def __init__(self, debug=False):
-        self.experiment = Experiment()
+        self.t0 = time.perf_counter()
+        np.seterr(all="raise")
+        torch.manual_seed(cfg.manual_seed)
+        torch.backends.cudnn.benchmark = not cfg.reproducibile_mode
+        torch.use_deterministic_algorithms(cfg.reproducibile_mode)
+        self.device = torch.device("cuda")
+
+        self.experiment = Experiment(disabled=debug)
+
+        root = Path()
         self.session_id = (
             "debug" if debug else "Session_" + datetime.now().strftime("%y%m%d-%H%M")
         )
@@ -95,7 +102,8 @@ class Session:
         """Hook for beginning an epoch"""
         self.train_log.info(f"Beginning epoch {epoch}")
         self.experiment.set_epoch(epoch)
+        self.epoch = epoch
 
     def end(self):
         self.experiment.end()
-        self.train_log.info(f"Finished in {time.perf_counter() - t0} seconds.")
+        self.train_log.info(f"Finished in {time.perf_counter() - self.t0} seconds.")
