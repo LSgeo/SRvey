@@ -4,26 +4,25 @@ channels:
   - defaults
 dependencies:
   ## Core
-  - python
+  - python>=3.10
   - pytorch::pytorch>=1.10
   # - pytorch/win-64::torchvision>=0.10=py39_cu111 # my-hardware specific bug(?)
   - pytorch::torchvision>=0.11
-  - nvidia::cudatoolkit=11.3
+  - nvidia::cudatoolkit=11.3.1
   - comet_ml::comet_ml
   - matplotlib
   - numpy
   - verde
-  - harmonica>=0.3.3
   ## geophys_utils
-  - numexpr
-  - affine
-  - netCDF4
-  - gdal
-  - owslib
-  - scikit-image
-  - scipy
-  - cartopy
-  - shapely
+  # - numexpr
+  # - affine
+  # - netCDF4
+  # - gdal
+  # - owslib
+  # - scikit-image
+  # - scipy
+  # - cartopy
+  # - shapely
   ## Quality of life
   - black
   - colorcet

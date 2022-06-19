@@ -1,15 +1,18 @@
+print(f"Loading {__name__}")
+
+
 def main():
-    import cfg
-    import data
-    from networks import LTE
+    import srvey.cfg as cfg
+    import srvey.data as data
     from srvey import Session
+    from srvey.networks.lte import LTE
 
     session = Session(debug=True)
 
     train_dataloader, val_dataloader, preview_dataloader = data.build_dataloaders()
     # model = net.ArbRDNPlus(session, len(train_dataloader) * cfg.num_epochs)
     # model = net.RDNPlus(session, len(train_dataloader) * cfg.num_epochs)  # Locked 4x sr
-    model = LTE.model(session)
+    model = LTE(session)
 
     if cfg.pretrained_model:
         model.load_pretrained_model(cfg.pretrained_model)
