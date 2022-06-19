@@ -1,14 +1,15 @@
+print(f"Loading {__name__}")
 from pathlib import Path
 
 ########################## User Input Config ##########################
-pretrained_model = None
-train_from_epoch = -1  # specify epoch to train from, -1 for final
-
 root_tiles_path = Path("noddyverse_data")
 train_tiles_path = root_tiles_path / "train"
 val_tiles_path = root_tiles_path / "val"
+preview_indices = range(4)  # [6, 18, 20, 23, 24, 30, 38, 44, 46, 48]
 
-dataset_kwargs = {
+pretrained_model = None
+
+dataset_config = {
     "load_magnetics": True,
     "load_gravity": False,
     "load_geology": False,
@@ -19,19 +20,35 @@ dataset_kwargs = {
     "heading": None,
 }
 
-hr_size = 200
-preview_indices = range(4)  # [6, 18, 20, 23, 24, 30, 38, 44, 46, 48]
+# LTE options
+encoder_spec = {
+    # "name": "swinir",
+    "img_size": 48,
+    "in_chans": 1,
+    "upscale": 2,
+    "no_upsampling": True,
+}
+imnet_spec = {
+    # "name": "mlp",
+    "in_dim": 256,
+    "out_dim": 3,
+    "hidden_list": [256, 256, 256],
+    "hidden_dim": 256,
+}
+
+## Cometl.ml setup
+# api_key and config recorded in .comet.config
+tags = [root_tiles_path.stem]
 
 ## Torch config
 manual_seed = 21
 use_amp = True
 reproducibile_mode = True
 
-## Cometl.ml setup
-# api_key and config recorded in .comet.config
-tags = [root_tiles_path.stem]
-
 ## Parameters
+train_from_epoch = -1  # specify epoch to train from, -1 for final
+hr_size = 200
+
 max_lr = 4e-4
 load_d_weights = False
 num_epochs = 10
