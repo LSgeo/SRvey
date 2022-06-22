@@ -26,7 +26,7 @@ class Session:
         np.seterr(all="raise")
         torch.manual_seed(cfg.manual_seed)
         torch.backends.cudnn.benchmark = not cfg.reproducibile_mode
-        torch.use_deterministic_algorithms(cfg.reproducibile_mode)
+        # torch.use_deterministic_algorithms(cfg.reproducibile_mode)
         self.device = torch.device("cuda")
 
         self.experiment = Experiment(disabled=debug)
@@ -41,20 +41,27 @@ class Session:
             / (
                 "debug"
                 if debug
-                else f"{cfg.pretrained_model or self.experiment.get_key()}"
+                else f"{cfg.pretrained_model_id or self.experiment.get_key()}"
             )
         )
-        if cfg.pretrained_model:
+        if cfg.pretrained_model_id:
             self.session_dir = (
                 self.session_dir / f"continued_in_{self.experiment.get_key()}"
             )
 
-        self.session_dir.mkdir(exist_ok=True, parents=True)
+        self.model_out_path = self.session_dir / "models"
+        self.model_out_path.mkdir(exist_ok=True, parents=True)
 
-        self._init_comet()
-        self._init_log()
+        self.__init_comet()
+        self.__init_log()
+        d = torch.cuda.get_device_properties(torch.cuda.device)
+        self.train_log.info(
+            f"GPU: {d.name}, "
+            f"GPU RAM: {d.total_memory / 1e9:.1f} GB, "
+            f"SM's: {d.multi_processor_count}"
+        )
 
-    def _init_comet(self):
+    def __init_comet(self):
         self.experiment.add_tags(cfg.tags)
         self.experiment.log_parameters(
             {
@@ -62,23 +69,22 @@ class Session:
                 "Preview indices": cfg.preview_indices,
                 "Seed": cfg.manual_seed,
                 "AMP enabled": cfg.use_amp,
-                "Benchmark mode": not cfg.reproducibile_mode,
-                "Deterministic mode": cfg.reproducibile_mode,
+                "Reproducible mode": cfg.reproducibile_mode,
                 "Max LR": cfg.max_lr,
-                "Load discriminator weights": cfg.load_d_weights,
+                # "Load discriminator weights": cfg.load_d_weights,
                 "Number of epochs": cfg.num_epochs,
-                "Batch size Train": cfg.trn_batch_size,
-                "Batch size Validation": cfg.val_batch_size,
+                "Batch size train": cfg.trn_batch_size,
+                "Batch size validation": cfg.val_batch_size,
                 # "Iterations per epoch": iters_per_epoch,
                 "Validation frequency": cfg.val_freq,
                 "Preview frequency": cfg.preview_freq,
                 "Checkpoint frequency": cfg.checkpoint_freq,
                 "Number of DataLoader workers": cfg.num_workers,
-                "LR scheduler": cfg.scheduler_type,
+                "LR scheduler": cfg.scheduler_spec["name"],
             }
         )
 
-    def _init_log(self):
+    def __init_log(self):
         logging.basicConfig(
             level=logging.DEBUG,
             format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",

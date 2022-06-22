@@ -6,49 +6,36 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import srvey.cfg as cfg
+from srvey.networks import BaseModel
+from srvey.data import make_coord
 
 
-def make_coord(shape, ranges=None, flatten=True):
-    """https://github.com/jaewon-lee-b/lte/blob/main/utils.py#L104"""
-    """Make coordinates at grid centers."""
-    coord_seqs = []
-    for i, n in enumerate(shape):
-        if ranges is None:
-            v0, v1 = -1, 1
-        else:
-            v0, v1 = ranges[i]
-        r = (v1 - v0) / (2 * n)
-        seq = v0 + r + (2 * r) * torch.arange(n).float()
-        coord_seqs.append(seq)
-    ret = torch.stack(torch.meshgrid(*coord_seqs), dim=-1)
-    if flatten:
-        ret = ret.view(-1, ret.shape[-1])
-    return ret
-
-
-class LTE(nn.Module):
+class LTE(BaseModel):
     """From https://github.com/jaewon-lee-b/lte/blob/main/models/lte.py"""
 
-    def __init__(self):
+    def __init__(self, session):
         from srvey.networks.lte.swinir import SwinIR
 
-        super().__init__()
-        self.encoder = SwinIR(*cfg.encoder_spec)
+        super().__init__(session)
+        self.encoder = SwinIR(**cfg.encoder_spec)
         self.coef = nn.Conv2d(
-            self.encoder.out_dim, cfg.imnet_spec["hidden_dim"], 3, padding=1
+            self.encoder.out_dim, cfg.lte_spec["hidden_dim"], 3, padding=1
         )
         self.freq = nn.Conv2d(
-            self.encoder.out_dim, cfg.imnet_spec["hidden_dim"], 3, padding=1
+            self.encoder.out_dim, cfg.lte_spec["hidden_dim"], 3, padding=1
         )
-        self.phase = nn.Linear(2, cfg.imnet_spec["hidden_dim"] // 2, bias=False)
+        self.phase = nn.Linear(2, cfg.lte_spec["hidden_dim"] // 2, bias=False)
 
-        self.imnet = mlp(*cfg.imnet_spec)
+        self.imnet = mlp(**cfg.imnet_spec)
+
+        super()._init_optimizer()
+        super()._init_scheduler()
 
     def gen_feat(self, inp):
         self.inp = inp
         self.feat_coord = (
             make_coord(inp.shape[-2:], flatten=False)
-            .cuda()
+            .to(self.d, non_blocking=True)
             .permute(2, 0, 1)
             .unsqueeze(0)
             .expand(inp.shape[0], 2, *inp.shape[-2:])
@@ -148,28 +135,29 @@ class LTE(nn.Module):
         )[:, :, 0, :].permute(0, 2, 1)
         return ret
 
-    def forward(self, inp, coord, cell):
+    def forward(
+        self,
+        inp,  # input raster
+        coord,  # coordinates at grid centers (meshgrid)
+        cell,  # torch.ones_like(coord)[:, :, 0] *= 2 / inp.shape[-2] / scale
+    ):
+
         self.gen_feat(inp)
         return self.query_rgb(coord, cell)
-
-
-# class model(LTE):
-#     def __init__():
-#         super().__init__()
 
 
 class mlp(nn.Module):
     """https://github.com/jaewon-lee-b/lte/blob/main/models/mlp.py"""
 
-    def __init__(self):
+    def __init__(self, in_dim, out_dim, hidden_list):
         super().__init__()
         layers = []
-        lastv = cfg.imnet_spec["in_dim"]
-        for hidden in cfg.imnet_spec["hidden_list"]:
+        lastv = in_dim
+        for hidden in hidden_list:
             layers.append(nn.Linear(lastv, hidden))
             layers.append(nn.ReLU())
             lastv = hidden
-        layers.append(nn.Linear(lastv, cfg.imnet_spec["out_dim"]))
+        layers.append(nn.Linear(lastv, out_dim))
         self.layers = nn.Sequential(*layers)
 
     def forward(self, x):
