@@ -7,7 +7,7 @@
 # And then potentially (but not yet substantially) modified by Luke Smith
 # It would be neat to implement SwinIR 2... Or at least modify the below for parts.
 
-print(f'Loading {__name__}')
+print(f"Loading {__name__}")
 
 from argparse import Namespace
 
@@ -119,7 +119,9 @@ class WindowAttention(nn.Module):
         # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.window_size[0])
         coords_w = torch.arange(self.window_size[1])
-        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+        coords = torch.stack(
+            torch.meshgrid([coords_h, coords_w], indexing="ij")
+        )  # 2, Wh, Ww
         coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
         relative_coords = (
             coords_flatten[:, :, None] - coords_flatten[:, None, :]
@@ -886,10 +888,8 @@ class SwinIR(nn.Module):
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
-        # stochastic depth
-        dpr = [
-            x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))
-        ]  # stochastic depth decay rule
+        # stochastic depth # stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
 
         # build Residual Swin Transformer blocks (RSTB)
         self.layers = nn.ModuleList()

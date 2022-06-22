@@ -10,12 +10,6 @@ import srvey.cfg as cfg
 from mlnoddy.datasets import NoddyDataset
 
 
-def norm_noddy_tensor(batch):
-    norm = lambda i: i  # TODO
-    norm_data = norm(batch)
-    return norm_data
-
-
 def build_dataloaders():
     """Returns dataloaders for Training, Validation, and image previews"""
 
@@ -114,9 +108,10 @@ def grid(x, y, zs, ls: int = 20, cs_fac: int = 4):
         input_cell_size: Input model cell size, 20m for Noddyverse
 
     See docstring for subsample() for further notes.
+    #TODO Grid the full extent, or crop to useful extent.
     """
     for rz in zs:
-        gridder = vd.ScipyGridder("cubic").fit((x, y), rz)
+        gridder = vd.ScipyGridder("cubic", extra_args={"fill_value": 0}).fit((x, y), rz)
 
         yield gridder.grid(
             region=[0, in_cs * 200, 0, in_cs * 200],
@@ -147,7 +142,7 @@ def make_coord(shape, ranges=None, flatten=True):
         return ret
 
 
-def to_pixel_samples(grid):
+def to_cell_samples(grid):
     """Convert the image to coord-*C pairs.
     grid: Tensor, (C, H, W)
     https://github.com/jaewon-lee-b/lte/blob/main/utils.py#L122
@@ -164,7 +159,7 @@ def to_pixel_samples(grid):
     if len(grid.shape) != 3:  # C,H,W, data are not batched yet.
         raise ValueError(f"Grid should be of shape C,H,W by now. Got {grid.shape}")
     coord = make_coord(grid.shape[-2:])
-    c_vals = grid.view(grid.shape[1], -1).permute(1, 0)
+    c_vals = grid.view(grid.shape[-3], -1).permute(1, 0)
     return coord, c_vals
 
 
@@ -190,34 +185,41 @@ class HRLRNoddyDataset(NoddyDataset):
             else:
                 self.sp["heading"] = "EW"
 
-        hr_x, hr_y, _hr_zs = subsample(self.sp, 1, *self.data["gt"])
+        hr_x, hr_y, _hr_zs = subsample(self.sp, 1, *self.data["gt_grid"])
+        lr_x, lr_y, _lr_zs = subsample(self.sp, self.scale, *self.data["gt_grid"])
         _hr_grids = [
-            torch.from_numpy(g) for g in grid(hr_x, hr_y, _hr_zs, ls=hls, cs_fac=4)
+            torch.from_numpy(g).unsqueeze(0) for g in grid(hr_x, hr_y, _hr_zs, ls=hls)
         ]
-        self.data = {"hr": torch.stack(_hr_grids, dim=0), **self.data}
-
-        lr_x, lr_y, _lr_zs = subsample(self.sp, self.scale, *self.data["gt"])
         _lr_grids = [
-            torch.from_numpy(g) for g in grid(lr_x, lr_y, _lr_zs, ls=lls, cs_fac=4)
+            torch.from_numpy(g).unsqueeze(0) for g in grid(lr_x, lr_y, _lr_zs, ls=lls)
         ]
-        self.data = {"lr": torch.stack(_lr_grids, dim=0), **self.data}
 
-        self.data["coord"], self.data["c_vals"] = to_pixel_samples(
-            self.data["hr"].contiguous()
+        if cfg.dataset_config["load_magnetics"] and cfg.dataset_config["load_gravity"]:
+            hr_grid = torch.stack(_hr_grids, dim=0)
+            self.data["lr_grid"] = torch.stack(_lr_grids, dim=0)
+            raise NotImplementedError("Haven't designed network for this yet")
+        else:
+            hr_grid = _hr_grids[0]
+            self.data["lr_grid"] = _lr_grids[0]
+
+        self.data["hr_coord"], self.data["hr_vals"] = to_cell_samples(
+            hr_grid.contiguous()
         )
 
-        # TODO Understand what sample_q is doing from
-        # https://github.com/jaewon-lee-b/lte/blob/94bca2bf5777b76edbad46e899a1c2243e3751d4/datasets/wrappers.py#L64
+        self.data["hr_cell"] = torch.ones_like(self.data["hr_coord"])
+        self.data["hr_cell"][:, 0] *= 2 / hr_grid.shape[-2]
+        self.data["hr_cell"][:, 1] *= 2 / hr_grid.shape[-1]
 
-        self.data["cell"] = torch.ones_like(self.data["coord"])
-        self.data["cell"][:, 0] *= 2 / self.data["hr"].shape[-2]
-        self.data["cell"][:, 1] *= 2 / self.data["hr"].shape[-1]
+        # LTE Sample_q not implemented, but I think it subsamples random amount of pixels from the full suite
+        # https://github.com/jaewon-lee-b/lte/blob/94bca2bf5777b76edbad46e899a1c2243e3751d4/datasets/wrappers.py#L64
 
         # # self.data at this point may look like (some optional):
         # {
         #     "label": encode_label(self.parent),
-        #     "gt": torch.stack(gt_data, dim=0),
-        #     "hr": torch.stack(hr_grids, dim=0),
-        #     "lr": torch.stack(lr_grids, dim=0),
-        #     "geo": torch.from_numpy($2d_array_of_layer_n)),
+        #     "geo":   torch.from_numpy($2d_array_of_layer_n)),
+        #     "gt":    torch.stack(gt_data, dim=0),
+        #     "lr_grid":    torch.stack(lr_grids, dim=0),
+        #     "hr_vals":    torch.stack(hr_grids, dim=0),
+        #     "hr_coord": coordinate array of for hr values
+        #     "hr_cell":  ones like coord but = [[coord 2/h], [coord2/w]]
         # }

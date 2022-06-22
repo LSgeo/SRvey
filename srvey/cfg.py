@@ -27,7 +27,7 @@ dataset_config = {
 encoder_spec = {
     # "name": "swinir",
     "img_size": 48,
-    "in_chans": 1,
+    "in_chans": 1, # also sets out_chans
     "upscale": 2,
     "no_upsampling": True,
 }
@@ -67,8 +67,8 @@ pin_memory = False
 trn_batch_size = 1
 val_batch_size = 1  # len(preview_indices)
 
-metric_freq = 10  # iterations
-val_freq = 50  # epochs
-preview_freq = 200  # epochs
-checkpoint_freq = 2000  # epochs
+metric_freq = 100  # iterations
+val_freq = 1  # epochs
+preview_freq = 1  # epochs
+checkpoint_freq = 5  # epochs
 # preview_indices = preview_indices[:val_batch_size]  # Ensure previews included in Val

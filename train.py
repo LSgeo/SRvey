@@ -7,15 +7,13 @@ def main():
     from srvey import Session
     from srvey.networks.lte import LTE
 
-    session = Session(debug=True)
+    session = Session(debug=False)
 
     train_dataloader, val_dataloader, preview_dataloader = data.build_dataloaders()
-    # model = net.ArbRDNPlus(session, len(train_dataloader) * cfg.num_epochs)
-    # model = net.RDNPlus(session, len(train_dataloader) * cfg.num_epochs)  # Locked 4x sr
     model = LTE(session)
 
     if cfg.pretrained_model_id:
-        model.load_pretrained_model(cfg.pretrained_model)
+        model.load_pretrained_model(cfg.pretrained_model_id)
         # Validate first if loading pre-trained model TODO
 
     model = model.to(session.device)
@@ -31,7 +29,7 @@ def main():
         for iter_num, batch in enumerate(train_dataloader):
             model.curr_iteration += 1
 
-            model.norm_feed_data(batch)
+            model.feed_data(batch)
             model.train_on_batch()
 
             if iter_num % cfg.metric_freq == 0 and iter_num != 0:
@@ -39,13 +37,13 @@ def main():
 
         if epoch_num % cfg.val_freq == 0:
             for batch in val_dataloader:
-                model.norm_feed_data(batch)
+                model.feed_data(batch)
                 model.validate_on_batch()
                 model.log_metrics()
 
         if epoch_num % cfg.preview_freq == 0:
             for batch in preview_dataloader:
-                model.norm_feed_data(batch)
+                model.feed_data(batch)
                 model.save_previews()
 
         if epoch_num % cfg.checkpoint_freq == 0:

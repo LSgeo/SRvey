@@ -16,7 +16,6 @@ from torch.optim.lr_scheduler import OneCycleLR, MultiStepLR
 
 import srvey
 import srvey.cfg as cfg
-from srvey.data import norm_noddy_tensor
 
 
 class BaseModel(nn.Module):
@@ -77,13 +76,11 @@ class BaseModel(nn.Module):
         self.load_state_dict(checkpoint["net_g"])
         self.to(self.d, non_blocking=True)
 
-    def norm_feed_data(self, batch):
-        t_batch = norm_noddy_tensor(batch)
-        # TODO do I need hr and lr on the GPU, or just the coord and cell?
-        # self.hr = t_batch["hr"].to(self.d, non_blocking=True)
-        self.lr = t_batch["lr"].to(self.d, non_blocking=True)
-        self.coord = t_batch["coord"].to(self.d, non_blocking=True)
-        self.cell = t_batch["cell"].to(self.d, non_blocking=True)
+    def feed_data(self, batch):
+        self.lr = batch["lr_grid"].to(self.d, non_blocking=True)
+        self.hr = batch["hr_vals"].to(self.d, non_blocking=True)
+        self.coord = batch["hr_coord"].to(self.d, non_blocking=True)
+        self.cell = batch["hr_cell"].to(self.d, non_blocking=True)
 
     def train_on_batch(self):
         """Train model using CUDA AMP on fed batch"""
@@ -114,7 +111,8 @@ class BaseModel(nn.Module):
         """Save metrics to Comet.ml, and/or log locally"""
         if log_to_comet:
             self.exp.set_step(self.curr_iteration)
-            self.exp.log_metrics(self.loss_dict)
+            self.exp.log_metrics(self.loss_dict) #TODO Ensure unscaled
+            self.exp.log_metrics(self.metric_dict)
             self.exp.log_metric("Current LR", self.scheduler.get_last_lr())
             self.exp.log_metric(
                 "Seconds per step",
@@ -130,6 +128,7 @@ class BaseModel(nn.Module):
             ]
 
         self.loss_dict.clear()  # Remove old keys
+        self.metric_dict.clear() 
 
     def save_previews(self):
         pass
