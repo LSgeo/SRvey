@@ -1,6 +1,5 @@
 .comet.config
-*.pyc
-
 experiments/
-data_train/
-data/
+
+*pycache*
+*.egg*
