@@ -1,4 +1,4 @@
-print(f"Loading {__name__}")
+print("Creating a process") # Dataloader workers
 
 
 def main():
@@ -35,18 +35,18 @@ def main():
             if iter_num % cfg.metric_freq == 0 and iter_num != 0:
                 model.log_metrics()
 
-        if epoch_num % cfg.val_freq == 0:
+        if iter_num % cfg.val_freq == 0:
             for batch in val_dataloader:
                 model.feed_data(batch)
                 model.validate_on_batch()
                 model.log_metrics()
 
-        if epoch_num % cfg.preview_freq == 0:
+        if iter_num % cfg.preview_freq == 0:
             for batch in preview_dataloader:
                 model.feed_data(batch)
                 model.save_previews()
 
-        if epoch_num % cfg.checkpoint_freq == 0:
+        if iter_num % cfg.checkpoint_freq == 0:
             model.save_model(for_inference_only=False)
 
         if "mslr" in cfg.scheduler_spec["name"]:

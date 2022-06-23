@@ -5,7 +5,6 @@ Local Texture Estimator for Implicit Representation Function (CVPR 2022)
 I (Luke Smith) hardcode SWINIR and MLP, the top performing model from their work
 
 """
-print(f"Loading {__name__}")
 
 from srvey.networks.lte.network import LTE
 from srvey.networks.lte.swinir import SwinIR

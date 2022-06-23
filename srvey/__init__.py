@@ -3,7 +3,7 @@
 Here I collect functions such as the Session handler, and set "run-time" 
 options like seeds, deterministic mode, etc.
 """
-print(f"Loading {__name__}")
+
 from pathlib import Path
 from datetime import datetime
 import logging
@@ -56,9 +56,9 @@ class Session:
         self.__init_log()
         d = torch.cuda.get_device_properties(torch.cuda.device)
         self.train_log.info(
-            f"GPU: {d.name}, "
-            f"GPU RAM: {d.total_memory / 1e9:.1f} GB, "
-            f"SM's: {d.multi_processor_count}"
+            f"| GPU: {d.name} "
+            f"| GPU RAM: {d.total_memory / 1024000:.1f} GB "
+            f"| SM's: {d.multi_processor_count} |"
         )
 
     def __init_comet(self):

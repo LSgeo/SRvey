@@ -1,4 +1,3 @@
-print(f"Loading {__name__}")
 from pathlib import Path
 
 ########################## User Input Config ##########################

@@ -1,4 +1,3 @@
-print(f"Loading {__name__}")
 import logging
 
 import numpy as np

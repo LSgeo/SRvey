@@ -111,21 +111,20 @@ class BaseModel(nn.Module):
         """Save metrics to Comet.ml, and/or log locally"""
         if log_to_comet:
             self.exp.set_step(self.curr_iteration)
-            self.exp.log_metrics(self.loss_dict) #TODO Ensure unscaled
-            self.exp.log_metrics(self.metric_dict)
+            self.exp.log_metrics(
+                {**self.metric_dict, **self.loss_dict}
+            )  # TODO Ensure unscaled
             self.exp.log_metric("Current LR", self.scheduler.get_last_lr())
             self.exp.log_metric(
-                "Seconds per step",
-                (time.perf_counter() - self.session.t0)
-                / (self.curr_iteration + 2),  # handle iter 0
+                "Samples per second",
+                (self.curr_iteration * cfg.trn_batch_size)
+                / (time.perf_counter() - self.session.t0),
             )
         if log_to_disk:
-            [
                 logging.getLogger("train").info(
-                    f"Iter: {self.curr_iteration:4d} {k}: {v:3f}"
+                f"Iter {self.curr_iteration:4d}: "
+                f"| {' | '.join([f'{k} {v:3f}' for k, v in self.loss_dict.items()])} |"
                 )
-                for k, v in self.loss_dict.items()
-            ]
 
         self.loss_dict.clear()  # Remove old keys
         self.metric_dict.clear() 

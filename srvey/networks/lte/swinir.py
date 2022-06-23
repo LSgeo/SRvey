@@ -7,8 +7,6 @@
 # And then potentially (but not yet substantially) modified by Luke Smith
 # It would be neat to implement SwinIR 2... Or at least modify the below for parts.
 
-print(f"Loading {__name__}")
-
 from argparse import Namespace
 
 import math
