@@ -31,7 +31,7 @@ class BaseModel(nn.Module):
         self.use_amp = cfg.use_amp and "cuda" in self.d.type
         self.scaler = torch.cuda.amp.GradScaler(enabled=cfg.use_amp)
 
-        self.mse = nn.MSELoss().to(self.d, non_blocking=True)
+        self.cri_mse = nn.MSELoss().to(self.d, non_blocking=True)
         self.cri_L1 = nn.L1Loss().to(self.d, non_blocking=True)
         self.psnr = None  # TODO psnr_func -
         # ? https://torchmetrics.readthedocs.io/en/stable/image/peak_signal_noise_ratio.html
@@ -85,17 +85,19 @@ class BaseModel(nn.Module):
     def train_on_batch(self):
         """Train model using CUDA AMP on fed batch"""
         self.train()
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad(set_to_none=True)
 
         with torch.autocast(self.d.type, enabled=self.use_amp):
-            self.sr = self(self.lr, self.coord, self.cell)
+            self.sr = self(self.lr, self.coord, self.cell)  # self *is* the model
 
-            self.loss_dict["MSE"] = self.mse(self.sr, self.hr)
-            self.loss_dict["L1"] = self.cri_L1(self.sr, self.hr)
+            loss_L1 = self.cri_L1(self.sr, self.hr)
+            # loss_mse = self.cri_mse(self.sr, self.hr)
             # self.metric_dict["PSNR"] = self.psnr(self.sr, self.hr)
 
-            self.loss = self.loss_dict["L1"]
-            self.scaler.scale(self.loss).backward()
+            self.loss_dict["Train_L1"] = loss_L1.item()
+            self.loss_dict["Train_MSE"] = self.cri_mse(self.sr, self.hr).item()
+
+            self.scaler.scale(loss_L1).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
 

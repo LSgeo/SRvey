@@ -27,6 +27,7 @@ def build_dataloaders():
         pin_memory=cfg.pin_memory,
         batch_size=cfg.trn_batch_size,
         num_workers=cfg.num_workers,
+        persistent_workers=bool(cfg.num_workers),
         shuffle=cfg.shuffle,
         drop_last=False,
     )

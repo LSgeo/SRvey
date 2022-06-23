@@ -44,20 +44,14 @@ class LTE(BaseModel):
         self.freqq = self.freq(self.feat)
         return self.feat
 
-    def query_rgb(self, coord, cell=None):
-        feat = self.feat
-        coef = self.coeff
-        freq = self.freqq
-
+    def query_grid(self, coord, cell=None):
         vx_lst = [-1, 1]
         vy_lst = [-1, 1]
         eps_shift = 1e-6
 
         # field radius (global: [-1, 1])
-        rx = 2 / feat.shape[-2] / 2
-        ry = 2 / feat.shape[-1] / 2
-
-        feat_coord = self.feat_coord
+        rx = 2 / self.feat.shape[-2] / 2
+        ry = 2 / self.feat.shape[-1] / 2
 
         preds = []
         areas = []
@@ -68,32 +62,36 @@ class LTE(BaseModel):
                 coord_[:, :, 0] += vx * rx + eps_shift
                 coord_[:, :, 1] += vy * ry + eps_shift
                 coord_.clamp_(-1 + 1e-6, 1 - 1e-6)
+
                 q_coef = F.grid_sample(
-                    coef,
+                    self.coeff,
                     coord_.flip(-1).unsqueeze(1),
                     mode="nearest",
                     align_corners=False,
                 )[:, :, 0, :].permute(0, 2, 1)
+
                 q_freq = F.grid_sample(
-                    freq,
+                    self.freqq,
                     coord_.flip(-1).unsqueeze(1),
                     mode="nearest",
                     align_corners=False,
                 )[:, :, 0, :].permute(0, 2, 1)
+
                 q_coord = F.grid_sample(
-                    feat_coord,
+                    self.feat_coord,
                     coord_.flip(-1).unsqueeze(1),
                     mode="nearest",
                     align_corners=False,
                 )[:, :, 0, :].permute(0, 2, 1)
+
                 rel_coord = coord - q_coord
-                rel_coord[:, :, 0] *= feat.shape[-2]
-                rel_coord[:, :, 1] *= feat.shape[-1]
+                rel_coord[:, :, 0] *= self.feat.shape[-2]
+                rel_coord[:, :, 1] *= self.feat.shape[-1]
 
                 # prepare cell
                 rel_cell = cell.clone()
-                rel_cell[:, :, 0] *= feat.shape[-2]
-                rel_cell[:, :, 1] *= feat.shape[-1]
+                rel_cell[:, :, 0] *= self.feat.shape[-2]
+                rel_cell[:, :, 1] *= self.feat.shape[-1]
 
                 # basis generation
                 bs, q = coord.shape[:2]
@@ -141,7 +139,7 @@ class LTE(BaseModel):
     ):
 
         self.gen_feat(inp)
-        return self.query_rgb(coord, cell)
+        return self.query_grid(coord, cell)
 
 
 class mlp(nn.Module):
