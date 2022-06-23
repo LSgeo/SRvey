@@ -106,8 +106,33 @@ class BaseModel(nn.Module):
 
     def validate_on_batch(self):
         self.eval()
+        with torch.no_grad():
+            self.sr = self(self.lr, self.coord, self.cell)
+            loss_L1 = self.cri_L1(self.sr, self.hr)
+            self.loss_dict["Val_L1"] = loss_L1.item()
+            self.loss_dict["Val_MSE"] = self.cri_mse(self.sr, self.hr).item()
 
-        pass
+
+    def save_previews(self, log_to_disk: bool = True, log_to_comet: bool = False):
+        """Convert current batch to images and log to comet.ml"""
+        self.validate_on_batch()
+        data = [["SR", self.sr.detach().cpu().numpy()]]
+
+        if (self.curr_epoch == self.start_epoch):  # Log LR and HR only once
+            data.append(["LR", self.lr.detach().cpu().numpy()])
+            data.append(["HR", self.hr.detach().cpu().numpy()])
+
+        for name, batch in data:  # For each resolution data
+            v = 0  # Reset tile index for each Resolution batch
+            for grid in batch:  # For each tensor data in the batch
+                # if log_to_comet:
+                self.session.experiment.log_image(
+                    (255 * (grid - grid.min()) / (grid.max() - grid.min())).astype(np.uint8),
+                    name=f"Grid_{cfg.preview_indices[v]}_{name}",
+                    image_scale=1,
+                    step=self.curr_iteration,
+                )
+                v += 1  # Track tile within batch
 
     def log_metrics(self, log_to_disk: bool = True, log_to_comet: bool = True):
         """Save metrics to Comet.ml, and/or log locally"""
@@ -123,16 +148,14 @@ class BaseModel(nn.Module):
                 / (time.perf_counter() - self.session.t0),
             )
         if log_to_disk:
-                logging.getLogger("train").info(
+            logging.getLogger("train").info(
                 f"Iter {self.curr_iteration:4d}: "
                 f"| {' | '.join([f'{k} {v:3f}' for k, v in self.loss_dict.items()])} |"
-                )
+            )
 
         self.loss_dict.clear()  # Remove old keys
-        self.metric_dict.clear() 
+        self.metric_dict.clear()
 
-    def save_previews(self):
-        pass
 
     def save_model(self, name: str = None, for_inference_only: bool = True):
         """Save model state for inference / continuation
@@ -165,30 +188,3 @@ class BaseModel(nn.Module):
                 self.session.model_out_path / filename,
             )
             # logging.info(f"Saved model and training state to {self.model_out_path}")
-
-    def save_previews(
-        self, log_to_disk: bool = True, log_to_comet: bool = False, **kwargs
-    ):
-        """Convert current batch to images and log to comet.ml"""
-
-        self.eval()  # ensure no training occurs
-        with torch.no_grad():
-            sr = self(self.batch["lr"].to(self.d, non_blocking=True))
-            data = [["SR", sr.detach().cpu().numpy()]]
-            if (
-                self.curr_epoch == self.start_epoch
-            ):  # Log LR and HR input and target once
-                data.append(["LR", self.batch["lr"].detach().cpu().numpy()])
-                data.append(["HR", self.batch["hr"].detach().cpu().numpy()])
-
-        for i, (name, batch) in enumerate(data):  # For each resolution data
-            v = 0  # Reset tile index for each Resolution batch
-            for j, d in enumerate(batch):  # For each tensor data in the batch
-                # if log_to_comet:
-                self.session.experiment.log_image(
-                    (255 * (d - d.min()) / (d.max() - d.min())).astype(np.uint8),
-                    name=f"Tile_{cfg.preview_indices[v]}_{name}",
-                    image_scale=1,
-                    step=self.curr_iteration,
-                )
-                v += 1  # Track tile within batch
