@@ -35,8 +35,8 @@ def build_dataloaders():
         val_dataset,
         pin_memory=cfg.pin_memory,
         batch_size=cfg.val_batch_size,
-        num_workers=cfg.num_workers,
-        persistent_workers=bool(cfg.num_workers),
+        num_workers=0,
+        # persistent_workers=bool(cfg.num_workers),
         shuffle=False,
     )
     preview_dataloader = DataLoader(
@@ -199,16 +199,18 @@ class HRLRNoddyDataset(NoddyDataset):
             self.data["lr_grid"] = torch.stack(_lr_grids, dim=0)
             raise NotImplementedError("Haven't designed network for this yet")
         else:
-            hr_grid = _hr_grids[0]
+            self.data["hr_grid"] = _hr_grids[0]
             self.data["lr_grid"] = _lr_grids[0]
 
+        
+
         self.data["hr_coord"], self.data["hr_vals"] = to_cell_samples(
-            hr_grid.contiguous()
+            self.data["hr_grid"].contiguous()
         )
 
         self.data["hr_cell"] = torch.ones_like(self.data["hr_coord"])
-        self.data["hr_cell"][:, 0] *= 2 / hr_grid.shape[-2]
-        self.data["hr_cell"][:, 1] *= 2 / hr_grid.shape[-1]
+        self.data["hr_cell"][:, 0] *= 2 / self.data["hr_grid"].shape[-2]
+        self.data["hr_cell"][:, 1] *= 2 / self.data["hr_grid"].shape[-1]
 
         # LTE Sample_q not implemented, but I think it subsamples random amount of pixels from the full suite
         # https://github.com/jaewon-lee-b/lte/blob/94bca2bf5777b76edbad46e899a1c2243e3751d4/datasets/wrappers.py#L64
@@ -217,9 +219,9 @@ class HRLRNoddyDataset(NoddyDataset):
         # {
         #     "label": encode_label(self.parent),
         #     "geo":   torch.from_numpy($2d_array_of_layer_n)),
-        #     "gt":    torch.stack(gt_data, dim=0),
+        #     "gt_grid":    torch.stack(gt_data, dim=0),
         #     "lr_grid":    torch.stack(lr_grids, dim=0),
-        #     "hr_vals":    torch.stack(hr_grids, dim=0),
+        #     "hr_grid":    torch.stack(hr_grids, dim=0),
         #     "hr_coord": coordinate array of for hr values
-        #     "hr_cell":  ones like coord but = [[coord 2/h], [coord2/w]]
+        #     "hr_cell":  array like hr_coord but = [[coord 2/h], [coord2/w]]
         # }

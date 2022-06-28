@@ -19,7 +19,6 @@ class BaseDataset(Dataset):
         self.augment = augment
 
         self.tile_path = Path(tile_path)
-        self.hr_size = cfg.hr_size
 
         # self._get_npy_data()
         self._get_tif_data()

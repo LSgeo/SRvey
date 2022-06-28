@@ -15,12 +15,10 @@ tags = [root_tiles_path.stem]
 
 ## Torch config
 manual_seed = 21
-reproducibile_mode = False
+reproducibile_mode = True
 use_amp = False  # TODO fix / unscale loss vals in report.
 
 ## Parameters
-hr_size = 200
-
 max_lr = 4e-2
 num_epochs = 1
 shuffle = False  # Need to use a sampler for this number of samples.
@@ -30,10 +28,10 @@ pin_memory = False
 trn_batch_size = 4
 val_batch_size = 4  # len(preview_indices)
 
-metric_freq = 100  # iterations
-val_freq = 500  # iters #epochs
-preview_freq = 500  # iters # epochs
-checkpoint_freq = 10000  #iters # epochs
+metric_freq = 500  # iterations
+val_freq = 25  # iters #epochs
+preview_freq = 50  # iters # epochs
+checkpoint_freq = 100000  # iters # epochs
 # preview_indices = preview_indices[:val_batch_size]  # Ensure previews included in Val
 
 dataset_config = {
@@ -46,13 +44,11 @@ dataset_config = {
     "sample_spacing": 20,
     "heading": "NS",
 }
-
 scheduler_spec = {
     "name": "msrl",
     "milestones": [500, 800, 900, 950],
     "gamma": 0.5,
 }
-
 # Network specifications
 encoder_spec = {
     # "name": "swinir",
@@ -61,14 +57,12 @@ encoder_spec = {
     "upscale": 2,
     "no_upsampling": True,
 }
-
 imnet_spec = {
     # "name": "mlp",
     "in_dim": 256,
     "out_dim": 1,
     "hidden_list": [256, 256, 256],
 }
-
 lte_spec = {
     "hidden_dim": 256,
 }

@@ -25,7 +25,7 @@ class BaseModel(nn.Module):
         self.d = self.session.device
         self.exp = self.session.experiment
         self.num_epochs = cfg.num_epochs
-        self.start_epoch = 0
+        self.start_epoch = 1
         self.curr_epoch = 0
         self.curr_iteration = 0
         self.use_amp = cfg.use_amp and "cuda" in self.d.type
@@ -38,6 +38,7 @@ class BaseModel(nn.Module):
 
         self.loss_dict = {}
         self.metric_dict = {}
+        self.val_batches = 1
 
     def _init_optimizer(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=cfg.max_lr)
@@ -155,7 +156,7 @@ class BaseModel(nn.Module):
 
         self.loss_dict.clear()  # Remove old keys
         self.metric_dict.clear()
-
+        self.val_batches = 1  # reset average counter
 
     def save_model(self, name: str = None, for_inference_only: bool = True):
         """Save model state for inference / continuation

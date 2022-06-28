@@ -65,24 +65,27 @@ class Session:
         self.experiment.add_tags(cfg.tags)
         self.experiment.log_parameters(
             {
-                "HR tile size": cfg.hr_size,
-                "Preview indices": cfg.preview_indices,
-                "Seed": cfg.manual_seed,
-                "AMP enabled": cfg.use_amp,
-                "Reproducible mode": cfg.reproducibile_mode,
-                "Max LR": cfg.max_lr,
-                # "Load discriminator weights": cfg.load_d_weights,
-                "Number of epochs": cfg.num_epochs,
                 "Batch size train": cfg.trn_batch_size,
                 "Batch size validation": cfg.val_batch_size,
-                # "Iterations per epoch": iters_per_epoch,
+                "Max LR": cfg.max_lr,
+                "LR scheduler": cfg.scheduler_spec["name"],
+                "Number of epochs": cfg.num_epochs,
+                "Preview indices": cfg.preview_indices,
+                "AMP enabled": cfg.use_amp,
+                "Reproducible mode": cfg.reproducibile_mode,
+                "Seed": cfg.manual_seed,
                 "Validation frequency": cfg.val_freq,
                 "Preview frequency": cfg.preview_freq,
                 "Checkpoint frequency": cfg.checkpoint_freq,
                 "Number of DataLoader workers": cfg.num_workers,
-                "LR scheduler": cfg.scheduler_spec["name"],
+                # "Load discriminator weights": cfg.load_d_weights,
+                # "Iterations per epoch": iters_per_epoch,
             }
         )
+        self.experiment.log_parameters(cfg.dataset_config, prefix="Noddy")
+        self.experiment.log_parameters(cfg.encoder_spec, prefix="SwinIR")
+        self.experiment.log_parameters(cfg.imnet_spec, prefix="MLP")
+        self.experiment.log_parameters(cfg.lte_spec, prefix="LTE")
 
     def __init_log(self):
         logging.basicConfig(

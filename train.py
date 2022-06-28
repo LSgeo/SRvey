@@ -1,4 +1,4 @@
-print("Creating a process") # Dataloader workers
+print("Creating a process")  # Dataloader workers
 
 
 def main():
@@ -32,27 +32,28 @@ def main():
             model.feed_data(batch)
             model.train_on_batch()
 
-            if iter_num % cfg.metric_freq == 0 and iter_num != 0:
+            if model.curr_iteration % cfg.metric_freq == 0:
                 model.log_metrics()
 
-        if iter_num % cfg.val_freq == 0:
-            for batch in val_dataloader:
-                model.feed_data(batch)
-                model.validate_on_batch()
+            if model.curr_iteration % cfg.val_freq == 0:
+                for batch in val_dataloader:
+                    model.feed_data(batch)
+                    model.validate_on_batch()
                 model.log_metrics()
 
-        if iter_num % cfg.preview_freq == 0:
-            for batch in preview_dataloader:
-                model.feed_data(batch)
-                model.save_previews()
+            if model.curr_iteration % cfg.preview_freq == 0:
+                for batch in preview_dataloader:
+                    model.save_previews(batch)
 
-        if iter_num % cfg.checkpoint_freq == 0:
-            model.save_model(for_inference_only=False)
+            if model.curr_iteration % cfg.checkpoint_freq == 0:
+                model.save_model(for_inference_only=False)
 
         if "mslr" in cfg.scheduler_spec["name"]:
             model.scheduler.step()
 
-    model.save_model(name=f"final_epoch_{epoch_num}.tar", for_inference_only=False)
+    model.save_model(
+        name=f"final_epoch_{model.curr_epoch}.tar", for_inference_only=False
+    )
     session.end()
 
 
