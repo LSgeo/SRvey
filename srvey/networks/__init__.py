@@ -106,29 +106,46 @@ class BaseModel(nn.Module):
                 self.scheduler.step()
 
     def validate_on_batch(self):
+        if "Val_L1" not in self.loss_dict.keys():
+            self.loss_dict["Val_L1"] = 0
+            self.loss_dict["Val_MSE"] = 0
+
         self.eval()
         with torch.no_grad():
             self.sr = self(self.lr, self.coord, self.cell)
-            loss_L1 = self.cri_L1(self.sr, self.hr)
-            self.loss_dict["Val_L1"] = loss_L1.item()
-            self.loss_dict["Val_MSE"] = self.cri_mse(self.sr, self.hr).item()
+            self.loss_dict["Val_L1"] += self.cri_L1(self.sr, self.hr).item()
+            self.loss_dict["Val_MSE"] += self.cri_mse(self.sr, self.hr).item()
+            self.val_batches += 1
 
-
-    def save_previews(self, log_to_disk: bool = True, log_to_comet: bool = False):
+    def save_previews(
+        self, batch, log_to_disk: bool = True, log_to_comet: bool = False, num_ch=1
+    ):
         """Convert current batch to images and log to comet.ml"""
-        self.validate_on_batch()
-        data = [["SR", self.sr.detach().cpu().numpy()]]
 
-        if (self.curr_epoch == self.start_epoch):  # Log LR and HR only once
-            data.append(["LR", self.lr.detach().cpu().numpy()])
-            data.append(["HR", self.hr.detach().cpu().numpy()])
+        self.eval()
+        with torch.no_grad():
+            sr = self(
+                batch["lr_grid"].to(self.d, non_blocking=True),
+                batch["hr_coord"].to(self.d, non_blocking=True),
+                batch["hr_cell"].to(self.d, non_blocking=True),
+            )
+
+        shape = batch["hr_grid"].shape
+
+        data = [["SR", sr.detach().cpu().numpy()]]
+
+        if self.curr_epoch == self.start_epoch:  # Log LR and HR only once
+            data.append(["LR", batch["lr_grid"]])
+            data.append(["HR", batch["hr_grid"]])
 
         for name, batch in data:  # For each resolution data
             v = 0  # Reset tile index for each Resolution batch
             for grid in batch:  # For each tensor data in the batch
                 # if log_to_comet:
                 self.session.experiment.log_image(
-                    (255 * (grid - grid.min()) / (grid.max() - grid.min())).astype(np.uint8),
+                    (255 * (grid - grid.min()) / (grid.max() - grid.min())).astype(
+                        np.uint8
+                    ),
                     name=f"Grid_{cfg.preview_indices[v]}_{name}",
                     image_scale=1,
                     step=self.curr_iteration,
@@ -137,6 +154,11 @@ class BaseModel(nn.Module):
 
     def log_metrics(self, log_to_disk: bool = True, log_to_comet: bool = True):
         """Save metrics to Comet.ml, and/or log locally"""
+
+        if "Val_L1" in self.loss_dict.keys():
+            self.loss_dict["Val_L1"] /= self.val_batches  # Average
+            self.loss_dict["Val_MSE"] /= self.val_batches
+
         if log_to_comet:
             self.exp.set_step(self.curr_iteration)
             self.exp.log_metrics(
