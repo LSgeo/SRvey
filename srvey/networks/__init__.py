@@ -31,13 +31,13 @@ class BaseModel(nn.Module):
         self.use_amp = cfg.use_amp and "cuda" in self.d.type
         self.scaler = torch.cuda.amp.GradScaler(enabled=cfg.use_amp)
 
-        self.cri_mse = nn.MSELoss().to(self.d, non_blocking=True)
+        # self.cri_mse = nn.MSELoss().to(self.d, non_blocking=True)
         self.cri_L1 = nn.L1Loss().to(self.d, non_blocking=True)
         self.psnr = None  # TODO psnr_func -
         # ? https://torchmetrics.readthedocs.io/en/stable/image/peak_signal_noise_ratio.html
 
         self.loss_dict = {}
-        self.metric_dict = {}
+        # self.metric_dict = {}
         self.val_batches = 1
 
     def _init_optimizer(self):
@@ -90,20 +90,18 @@ class BaseModel(nn.Module):
 
         with torch.autocast(self.d.type, enabled=self.use_amp):
             self.sr = self(self.lr, self.coord, self.cell)  # self *is* the model
-
             loss_L1 = self.cri_L1(self.sr, self.hr)
             # loss_mse = self.cri_mse(self.sr, self.hr)
             # self.metric_dict["PSNR"] = self.psnr(self.sr, self.hr)
 
-            self.loss_dict["Train_L1"] = loss_L1.item()
-            self.loss_dict["Train_MSE"] = self.cri_mse(self.sr, self.hr).item()
+        self.scaler.scale(loss_L1).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
-            self.scaler.scale(loss_L1).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+        if "oclr" in cfg.scheduler_spec["name"]:
+            self.scheduler.step()
 
-            if "oclr" in cfg.scheduler_spec["name"]:
-                self.scheduler.step()
+        loss_L1 = loss_L1.detach().cpu().numpy()
 
     def validate_on_batch(self):
         if "Val_L1" not in self.loss_dict.keys():
@@ -131,7 +129,6 @@ class BaseModel(nn.Module):
             )
 
         shape = batch["hr_grid"].shape
-
         data = [["SR", sr.detach().cpu().numpy()]]
 
         if self.curr_epoch == self.start_epoch:  # Log LR and HR only once
