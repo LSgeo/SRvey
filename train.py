@@ -1,4 +1,4 @@
-print("Creating a process")  # Dataloader workers
+# print(f"Creating a process in {__name__}")  # Dataloader workers
 
 
 def main():
@@ -20,7 +20,7 @@ def main():
     # https://pytorch.org/tutorials/beginner/basics/buildmodel_tutorial.html#define-the-class
     # or ?
     # model.to(session.device)
-    # # https://pytorch.org/tutorials/recipes/recipes/save_load_across_devices.html#save-on-cpu-load-on-gpu
+    # https://pytorch.org/tutorials/recipes/recipes/save_load_across_devices.html#save-on-cpu-load-on-gpu
 
     for epoch_num in range(model.start_epoch, model.num_epochs):
         session.begin_epoch(epoch_num)

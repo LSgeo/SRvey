@@ -82,17 +82,19 @@ class BaseModel(nn.Module):
         self.hr = batch["hr_vals"].to(self.d, non_blocking=True)
         self.coord = batch["hr_coord"].to(self.d, non_blocking=True)
         self.cell = batch["hr_cell"].to(self.d, non_blocking=True)
+        self.data_time = batch["Sample processing time"]  # Stays on cpu.
+        self.data_time = [self.data_time.mean(), self.data_time.std()]  # Stays on cpu.
 
     def train_on_batch(self):
-        """Train model using CUDA AMP on fed batch"""
+        """Train model using Automatic mixed precision on fed batch"""
         self.train()
         self.optimizer.zero_grad(set_to_none=True)
 
         with torch.autocast(self.d.type, enabled=self.use_amp):
-            self.sr = self(self.lr, self.coord, self.cell)  # self *is* the model
+            self.sr = self(self.lr, self.coord, self.cell)  # self *is* "the model"
             loss_L1 = self.cri_L1(self.sr, self.hr)
-            # loss_mse = self.cri_mse(self.sr, self.hr)
-            # self.metric_dict["PSNR"] = self.psnr(self.sr, self.hr)
+            # metric_mse = self.cri_mse(self.sr, self.hr)
+            # metric_psnr =
 
         self.scaler.scale(loss_L1).backward()
         self.scaler.step(self.optimizer)
@@ -168,10 +170,10 @@ class BaseModel(nn.Module):
                 / (time.perf_counter() - self.session.t0),
             )
         if log_to_disk:
-            logging.getLogger("train").info(
-                f"Iter {self.curr_iteration:4d}: "
-                f"| {' | '.join([f'{k} {v:3f}' for k, v in self.loss_dict.items()])} |"
-            )
+            logging.getLogger("Train").info(
+                f"| Iter: {self.curr_iteration:5d} "
+                f"| {' | '.join([f'{k:>10}: {v:.5f}' for k, v in {**self.loss_dict, **metric_dict}.items()])} |"
+            )  # Merge metrics and losses and print fixed width strings using | separator
 
         self.loss_dict.clear()  # Remove old keys
         self.metric_dict.clear()

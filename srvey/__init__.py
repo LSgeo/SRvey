@@ -55,9 +55,9 @@ class Session:
         self.__init_comet()
         self.__init_log()
         d = torch.cuda.get_device_properties(torch.cuda.device)
-        self.train_log.info(
+        self.log_train.info(
             f"| GPU: {d.name} "
-            f"| GPU RAM: {d.total_memory / 1024000:.1f} GB "
+            f"| GPU RAM: {d.total_memory / 1024**3:.1f} GB "
             f"| SM's: {d.multi_processor_count} |"
         )
 
@@ -102,17 +102,18 @@ class Session:
             "%(asctime)s %(name)-6s: %(levelname)-8s %(message)s"
         )
         console.setFormatter(formatter)
-        logging.getLogger("").addHandler(console)
+        logging.getLogger().addHandler(console)
 
-        self.train_log = logging.getLogger("train")
-        self.train_log.info("Initialised logging")
+        self.log = logging.getLogger("Session")
+        self.log_train = logging.getLogger("Train")
+        self.log.info("Initialised logging")
 
     def begin_epoch(self, epoch):
         """Hook for beginning an epoch"""
-        self.train_log.info(f"Beginning epoch {epoch}")
+        self.log.info(f"Beginning epoch {epoch}")
         self.experiment.set_epoch(epoch)
         self.epoch = epoch
 
     def end(self):
         self.experiment.end()
-        self.train_log.info(f"Finished in {time.perf_counter() - self.t0} seconds.")
+        self.log.info(f"Finished in {time.perf_counter() - self.t0} seconds.")

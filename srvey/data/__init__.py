@@ -1,4 +1,5 @@
 import logging
+import time
 
 import numpy as np
 import verde as vd
@@ -18,9 +19,11 @@ def build_dataloaders():
     val_dataset = HRLRNoddyDataset(model_dir=cfg.val_tiles_path, **cfg.dataset_config)
     preview_dataset = Subset(val_dataset, cfg.preview_indices)
 
-    logging.getLogger("data").info(f"{len(train_dataset)=}")
-    logging.getLogger("data").info(f"{len(val_dataset)=}")
-    logging.getLogger("data").info(f"{len(preview_dataset)=}")
+    logging.getLogger("Data").info(
+        f"| Training samples: {len(train_dataset)} "
+        f"| Validation samples: {len(val_dataset)} "
+        f"| Number of previews: {len(preview_dataset)} |"
+    )
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -175,6 +178,7 @@ class HRLRNoddyDataset(NoddyDataset):
         super().__init__(**kwargs)
 
     def _process(self, index):
+        dt0 = time.perf_counter()
         super()._process(index)
 
         hls = self.sp["line_spacing"]
@@ -195,14 +199,12 @@ class HRLRNoddyDataset(NoddyDataset):
         ]
 
         if cfg.dataset_config["load_magnetics"] and cfg.dataset_config["load_gravity"]:
-            hr_grid = torch.stack(_hr_grids, dim=0)
+            self.data["hr_grid"] = torch.stack(_hr_grids, dim=0)
             self.data["lr_grid"] = torch.stack(_lr_grids, dim=0)
             raise NotImplementedError("Haven't designed network for this yet")
         else:
             self.data["hr_grid"] = _hr_grids[0]
             self.data["lr_grid"] = _lr_grids[0]
-
-        
 
         self.data["hr_coord"], self.data["hr_vals"] = to_cell_samples(
             self.data["hr_grid"].contiguous()
@@ -211,6 +213,11 @@ class HRLRNoddyDataset(NoddyDataset):
         self.data["hr_cell"] = torch.ones_like(self.data["hr_coord"])
         self.data["hr_cell"][:, 0] *= 2 / self.data["hr_grid"].shape[-2]
         self.data["hr_cell"][:, 1] *= 2 / self.data["hr_grid"].shape[-1]
+
+        self.data["Sample processing time"] = torch.tensor(
+            time.perf_counter() - dt0, dtype=torch.float16
+        ) 
+         # used for metric
 
         # LTE Sample_q not implemented, but I think it subsamples random amount of pixels from the full suite
         # https://github.com/jaewon-lee-b/lte/blob/94bca2bf5777b76edbad46e899a1c2243e3751d4/datasets/wrappers.py#L64
@@ -224,4 +231,6 @@ class HRLRNoddyDataset(NoddyDataset):
         #     "hr_grid":    torch.stack(hr_grids, dim=0),
         #     "hr_coord": coordinate array of for hr values
         #     "hr_cell":  array like hr_coord but = [[coord 2/h], [coord2/w]]
+
+        #     "data_time": float of how long processing/dataset get took,
         # }
