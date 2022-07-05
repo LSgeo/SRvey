@@ -16,6 +16,7 @@ from torch.optim.lr_scheduler import OneCycleLR, MultiStepLR
 
 import srvey
 import srvey.cfg as cfg
+import mlnoddy.datasets
 
 
 class BaseModel(nn.Module):
@@ -30,6 +31,8 @@ class BaseModel(nn.Module):
         self.curr_iteration = 0
         self.use_amp = cfg.use_amp and "cuda" in self.d.type
         self.scaler = torch.cuda.amp.GradScaler(enabled=cfg.use_amp)
+
+        self.norm = mlnoddy.datasets.Norm(clip=5000).min_max_clip
 
         # self.cri_mse = nn.MSELoss().to(self.d, non_blocking=True)
         self.cri_L1 = nn.L1Loss().to(self.d, non_blocking=True)
