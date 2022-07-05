@@ -122,41 +122,61 @@ class BaseModel(nn.Module):
                 self.cri_L1(self.sr, self.hr).detach().cpu().numpy()
             )
             # self.loss_dict["Val_MSE"] += self.cri_mse(self.sr, self.hr).item()
-            self.val_batches += 1
+        self.val_batches += 1
 
     def save_previews(
         self, batch, log_to_disk: bool = True, log_to_comet: bool = False, num_ch=1
     ):
-        """Convert current batch to images and log to comet.ml"""
+        """Convert current batch to images and log to comet.ml
+        This is a similar process to validation, and could be included in that
+        method. However, it is simple to do it here with a specifically selected
+        dataset.
+
+        """
 
         self.eval()
         with torch.no_grad():
-            sr = self(
-                batch["lr_grid"].to(self.d, non_blocking=True),
-                batch["hr_coord"].to(self.d, non_blocking=True),
-                batch["hr_cell"].to(self.d, non_blocking=True),
+            sr = (
+                self(
+                    batch["lr_grid"].to(self.d, non_blocking=True),
+                    batch["hr_coord"].to(self.d, non_blocking=True),
+                    batch["hr_cell"].to(self.d, non_blocking=True),
+                )
+                .detach()
+                .cpu()
             )
 
-        shape = batch["hr_grid"].shape
-        data = [["SR", sr.detach().cpu().numpy()]]
+        sr = reshape_coordinate_array(batch["lr_grid"], batch["hr_grid"], sr)
+        data = {"SR": self.norm(sr, inverse=True).numpy()}
 
         if self.curr_epoch == self.start_epoch:  # Log LR and HR only once
-            data.append(["LR", batch["lr_grid"]])
-            data.append(["HR", batch["hr_grid"]])
+            data["LR"] = batch["lr_grid"].cpu().numpy()
+            data["HR"] = batch["hr_grid"].cpu().numpy()
 
-        for name, batch in data:  # For each resolution data
-            v = 0  # Reset tile index for each Resolution batch
-            for grid in batch:  # For each tensor data in the batch
-                # if log_to_comet:
-                self.session.experiment.log_image(
-                    (255 * (grid - grid.min()) / (grid.max() - grid.min())).astype(
-                        np.uint8
-                    ),
-                    name=f"Grid_{cfg.preview_indices[v]}_{name}",
-                    image_scale=1,
-                    step=self.curr_iteration,
-                )
-                v += 1  # Track tile within batch
+            # For each resolution batch
+            for name, res_batch in data.items():
+                # For each tensor in the batch
+                for i, grid in enumerate(res_batch):
+                    if log_to_comet:
+                        self.exp.log_image(
+                            (
+                                255 * (grid - grid.min()) / (grid.max() - grid.min())
+                            ).astype(np.uint8),
+                            name=f"Grid_{cfg.preview_indices[i]}_{name}",
+                            image_scale=1,
+                            step=self.curr_iteration,
+                        )
+
+                    if log_to_disk:
+                        import matplotlib.pyplot as plt
+
+                        plt.subplot(2, 1, 1)
+                        plt.imshow(data["LR"].permute((0, 2, 3, 1))[i, :, :, :])
+                        plt.subplot(2, 1, 2)
+                        plt.imshow(data["SR"][i, :, :, :])
+
+                        plt.savefig(f"Preview_{i}.png")
+                        plt.close()
 
     def log_metrics(self, log_to_disk: bool = True, log_to_comet: bool = True):
         """Save metrics to Comet.ml, and/or log locally"""
@@ -220,3 +240,35 @@ class BaseModel(nn.Module):
                 self.session.model_out_path / filename,
             )
             # logging.info(f"Saved model and training state to {self.model_out_path}")
+
+
+def reshape_coordinate_array(lr_grid, hr_grid, sr_pred):
+    """Reshape a coordinate array to match spatial dimensions
+
+    Args:
+        lr_grid: Batched, n channel, HxW array of LR grid
+        hr_grid: Batched, n channel, HxW array of groundtruth grid (used for shape)
+        hr_coord: Batched, n channel, 2xn_points of SR coordinates
+
+    Remember, Pytorch is [B,C,H,W], while Numpy is [H,W,C].
+
+    See https://github.com/jaewon-lee-b/lte/blob/main/test.py#L98
+    """
+
+    # if inp == "hr_vals":
+    #     # gt reshape
+    #     b, c, lrh, lrw = lr_grid.shape
+    #     s = np.sqrt(c / (lrh * lrw))  # Assumes square, I guess
+    #     shape = [b, round(lrh * s), round(lrw * s), c]
+    #     hr_grid = hr_grid.view(*shape).permute(0, 3, 1, 2).contiguous()
+
+    # prediction reshape
+    # ih += h_pad
+    # iw += w_pad
+    b, c, hrh, hrw = hr_grid.shape
+    # s = np.sqrt(c / (hrh * hrw))  # Assumes square, I guess
+    shape = (b, hrh, hrw, c)
+    sr_pred = sr_pred.reshape(shape)  # .permute(0, 3, 1, 2).contiguous()
+    # sr_pred = sr_pred[..., :hrw, :hrh]
+
+    return sr_pred
