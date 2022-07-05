@@ -4,7 +4,7 @@ from pathlib import Path
 root_tiles_path = Path("D:/luke/Noddy_data")
 train_tiles_path = root_tiles_path / "noddyverse_train_data"
 val_tiles_path = root_tiles_path / "noddyverse_val_data"
-preview_indices = range(4)  # [6, 18, 20, 23, 24, 30, 38, 44, 46, 48]
+preview_indices = range(8)  # [6, 18, 20, 23, 24, 30, 38, 44, 46, 48]
 
 pretrained_model_id: str = None  # will search for model file
 train_from_epoch = -1  # specify epoch to train from, -1 for final
@@ -16,22 +16,22 @@ tags = [root_tiles_path.stem]
 ## Torch config
 manual_seed = 21
 reproducibile_mode = True
-use_amp = False  # TODO fix / unscale loss vals in report.
+use_amp = True
 
 ## Parameters
 max_lr = 4e-2
 num_epochs = 5
-len_epochs = 128 # We have 1M samples, so we need to have an artificial number
+len_epochs = 128  # We have 1M samples, so we need to have an artificial number
 shuffle = False  # Need to use a sampler for this number of samples.
 
-num_workers = 2
+num_workers = 8
 pin_memory = False
 trn_batch_size = 4
 val_batch_size = 4  # len(preview_indices)
 
-metric_freq = 500  # iterations
-val_freq = 25  # iters #epochs
-preview_freq = 50  # iters # epochs
+metric_freq = 100  # iterations
+val_freq = 250  # iters #epochs
+preview_freq = 250  # iters # epochs
 checkpoint_freq = 100000  # iters # epochs
 # preview_indices = preview_indices[:val_batch_size]  # Ensure previews included in Val
 
@@ -54,14 +54,14 @@ scheduler_spec = {
 encoder_spec = {
     # "name": "swinir",
     "img_size": 48,
-    "in_chans": 1,  # also sets out_chans. ALSO set imnet out_dim.
+    "in_chans": 1,
     "upscale": 2,
     "no_upsampling": True,
 }
 imnet_spec = {
     # "name": "mlp",
     "in_dim": 256,
-    "out_dim": 1,
+    "out_dim": encoder_spec["in_chans"],
     "hidden_list": [256, 256, 256],
 }
 lte_spec = {
