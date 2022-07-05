@@ -41,7 +41,8 @@ class BaseModel(nn.Module):
 
         self.loss_dict = {}
         # self.metric_dict = {}
-        self.val_batches = 1
+        self.train_batches = 0
+        self.val_batches = 0
 
     def _init_optimizer(self):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=cfg.max_lr)
@@ -106,18 +107,21 @@ class BaseModel(nn.Module):
         if "oclr" in cfg.scheduler_spec["name"]:
             self.scheduler.step()
 
-        loss_L1 = loss_L1.detach().cpu().numpy()
+        self.loss_dict["Train_L1"] = loss_L1.detach().cpu().numpy()
+        self.train_batches += 1
 
     def validate_on_batch(self):
         if "Val_L1" not in self.loss_dict.keys():
             self.loss_dict["Val_L1"] = 0
-            self.loss_dict["Val_MSE"] = 0
+            # self.loss_dict["Val_MSE"] = 0
 
         self.eval()
         with torch.no_grad():
             self.sr = self(self.lr, self.coord, self.cell)
-            self.loss_dict["Val_L1"] += self.cri_L1(self.sr, self.hr).item()
-            self.loss_dict["Val_MSE"] += self.cri_mse(self.sr, self.hr).item()
+            self.loss_dict["Val_L1"] += (
+                self.cri_L1(self.sr, self.hr).detach().cpu().numpy()
+            )
+            # self.loss_dict["Val_MSE"] += self.cri_mse(self.sr, self.hr).item()
             self.val_batches += 1
 
     def save_previews(
@@ -157,30 +161,33 @@ class BaseModel(nn.Module):
     def log_metrics(self, log_to_disk: bool = True, log_to_comet: bool = True):
         """Save metrics to Comet.ml, and/or log locally"""
 
+        if "Train_L1" in self.loss_dict.keys():
+            self.loss_dict["Train_L1"] /= self.train_batches
         if "Val_L1" in self.loss_dict.keys():
             self.loss_dict["Val_L1"] /= self.val_batches  # Average
-            self.loss_dict["Val_MSE"] /= self.val_batches
+            # self.loss_dict["Val_MSE"] /= self.val_batches
+
+        metric_dict = {
+            "Current LR": self.scheduler.get_last_lr()[0],
+            "Sample processing time Mean": self.data_time[0],
+            "Sample processing time Std": self.data_time[1],
+            "Samples per second": (self.curr_iteration * cfg.trn_batch_size)
+            / (time.perf_counter() - self.session.t0),
+        }
 
         if log_to_comet:
             self.exp.set_step(self.curr_iteration)
-            self.exp.log_metrics(
-                {**self.metric_dict, **self.loss_dict}
-            )  # TODO Ensure unscaled
-            self.exp.log_metric("Current LR", self.scheduler.get_last_lr())
-            self.exp.log_metric(
-                "Samples per second",
-                (self.curr_iteration * cfg.trn_batch_size)
-                / (time.perf_counter() - self.session.t0),
-            )
+            self.exp.log_metrics({**self.loss_dict, **metric_dict})
         if log_to_disk:
             logging.getLogger("Train").info(
                 f"| Iter: {self.curr_iteration:5d} "
                 f"| {' | '.join([f'{k:>10}: {v:.5f}' for k, v in {**self.loss_dict, **metric_dict}.items()])} |"
             )  # Merge metrics and losses and print fixed width strings using | separator
 
+        self.train_batches = 0  # reset average counter
+        self.val_batches = 0
         self.loss_dict.clear()  # Remove old keys
         self.metric_dict.clear()
-        self.val_batches = 1  # reset average counter
 
     def save_model(self, name: str = None, for_inference_only: bool = True):
         """Save model state for inference / continuation
