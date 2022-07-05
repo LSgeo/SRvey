@@ -48,6 +48,10 @@ def main():
             if model.curr_iteration % cfg.checkpoint_freq == 0:
                 model.save_model(for_inference_only=False)
 
+            if iter_num >= cfg.len_epochs:
+                NotImplementedError("This is an incorrect method for limiting epoch length")
+                break
+
         if "mslr" in cfg.scheduler_spec["name"]:
             model.scheduler.step()
 

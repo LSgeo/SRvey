@@ -20,7 +20,8 @@ use_amp = False  # TODO fix / unscale loss vals in report.
 
 ## Parameters
 max_lr = 4e-2
-num_epochs = 1
+num_epochs = 5
+len_epochs = 128 # We have 1M samples, so we need to have an artificial number
 shuffle = False  # Need to use a sampler for this number of samples.
 
 num_workers = 2
