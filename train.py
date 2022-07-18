@@ -1,6 +1,5 @@
 # print(f"Creating a process in {__name__}")  # Dataloader workers
 
-
 def main():
     import srvey.cfg as cfg
     import srvey.data as data
@@ -27,6 +26,12 @@ def main():
         model.curr_epoch += 1
 
         for iter_num, batch in enumerate(train_dataloader):
+            if iter_num >= cfg.len_epochs:
+                NotImplementedError(
+                    "This is an incorrect method for limiting epoch length"
+                )
+                break
+
             model.curr_iteration += 1
 
             model.feed_data(batch)
@@ -35,26 +40,22 @@ def main():
             if model.curr_iteration % cfg.metric_freq == 0:
                 model.log_metrics()
 
-            if model.curr_iteration % cfg.val_freq == 0:
-                for batch in val_dataloader:
-                    model.feed_data(batch)
-                    model.validate_on_batch()
-                model.log_metrics()
+        if model.curr_epoch % cfg.val_freq == 0:
+            for batch in val_dataloader:
+                model.feed_data(batch)
+                model.validate_on_batch()
+            model.log_metrics()
 
-            if model.curr_iteration % cfg.preview_freq == 0:
-                for batch in preview_dataloader:
-                    model.save_previews(batch)
+        if model.curr_epoch % cfg.preview_freq == 0:
+            for batch in preview_dataloader:
+                model.save_previews(batch, log_to_comet=True)
 
-            if model.curr_iteration % cfg.checkpoint_freq == 0:
-                model.save_model(for_inference_only=False)
-
-            if iter_num >= cfg.len_epochs:
-                NotImplementedError("This is an incorrect method for limiting epoch length")
-                break
-
+        if model.curr_epoch % cfg.checkpoint_freq == 0:
+            model.save_model(for_inference_only=False)
+        
         if "mslr" in cfg.scheduler_spec["name"]:
             model.scheduler.step()
-
+            
     model.save_model(
         name=f"final_epoch_{model.curr_epoch}.tar", for_inference_only=False
     )
