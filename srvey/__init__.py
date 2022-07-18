@@ -23,6 +23,7 @@ class Session:
 
     def __init__(self, debug=False):
         self.t0 = time.perf_counter()
+        self.t1 = time.perf_counter()
         np.seterr(all="raise")
         torch.manual_seed(cfg.manual_seed)
         torch.backends.cudnn.benchmark = not cfg.reproducibile_mode
@@ -99,21 +100,26 @@ class Session:
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
         formatter = logging.Formatter(
-            "%(asctime)s %(name)-6s: %(levelname)-8s %(message)s"
+            "%(asctime)s %(name)-8s: %(levelname)-8s %(message)s"
         )
         console.setFormatter(formatter)
         logging.getLogger().addHandler(console)
 
         self.log = logging.getLogger("Session")
         self.log_train = logging.getLogger("Train")
-        self.log.info("Initialised logging")
+        self.log.info("| Initialised logging")
 
     def begin_epoch(self, epoch):
         """Hook for beginning an epoch"""
-        self.log.info(f"Beginning epoch {epoch}")
+        self.log.debug(
+            f"Previous epoch or initialisation time took"
+            f" {time.perf_counter() - self.t1:0.1f} seconds."
+        )
+        self.t1 = time.perf_counter()
+        self.log.info(f"| Beginning epoch {epoch}")
         self.experiment.set_epoch(epoch)
         self.epoch = epoch
 
     def end(self):
         self.experiment.end()
-        self.log.info(f"Finished in {time.perf_counter() - self.t0} seconds.")
+        self.log.info(f"| Finished in {time.perf_counter() - self.t0:d} seconds.")

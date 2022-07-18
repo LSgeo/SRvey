@@ -4,14 +4,14 @@ from pathlib import Path
 root_tiles_path = Path("D:/luke/Noddy_data")
 train_tiles_path = root_tiles_path / "noddyverse_train_data"
 val_tiles_path = root_tiles_path / "noddyverse_val_data"
-preview_indices = range(8)  # [6, 18, 20, 23, 24, 30, 38, 44, 46, 48]
+preview_indices = [6, 18, 20, 23]  # , 24, 30, 38, 44, 46, 48]
 
 pretrained_model_id: str = None  # will search for model file
 train_from_epoch = -1  # specify epoch to train from, -1 for final
 
 ## Cometl.ml setup
 # api_key and config recorded in .comet.config
-tags = [root_tiles_path.stem]
+tags = [root_path.stem]
 
 ## Torch config
 manual_seed = 21

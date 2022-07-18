@@ -20,9 +20,9 @@ def build_dataloaders():
     preview_dataset = Subset(val_dataset, cfg.preview_indices)
 
     logging.getLogger("Data").info(
-        f"| Training samples: {len(train_dataset)} "
-        f"| Validation samples: {len(val_dataset)} "
-        f"| Number of previews: {len(preview_dataset)} |"
+        f"| Training samples: {len(train_dataset)}"
+        f" | Validation samples: {len(val_dataset)}"
+        f" | Number of previews: {len(preview_dataset)} |"
     )
 
     train_dataloader = DataLoader(

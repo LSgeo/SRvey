@@ -86,7 +86,9 @@ class BaseModel(nn.Module):
         self.hr = batch["hr_vals"].to(self.d, non_blocking=True)
         self.coord = batch["hr_coord"].to(self.d, non_blocking=True)
         self.cell = batch["hr_cell"].to(self.d, non_blocking=True)
-        self.data_time = batch["Sample processing time"]  # Stays on cpu.
+        self.data_time = (
+            batch["Sample processing time"] / self.lr.shape[0]
+        )  # Stays on cpu.
         self.data_time = [self.data_time.mean(), self.data_time.std()]  # Stays on cpu.
 
     def train_on_batch(self):
@@ -170,11 +172,7 @@ class BaseModel(nn.Module):
                     if log_to_disk:
                         import matplotlib.pyplot as plt
 
-                        plt.subplot(2, 1, 1)
-                        plt.imshow(data["LR"].permute((0, 2, 3, 1))[i, :, :, :])
-                        plt.subplot(2, 1, 2)
                         plt.imshow(data["SR"][i, :, :, :])
-
                         plt.savefig(f"Preview_{i}.png")
                         plt.close()
 
@@ -182,26 +180,30 @@ class BaseModel(nn.Module):
         """Save metrics to Comet.ml, and/or log locally"""
 
         if "Train_L1" in self.loss_dict.keys():
-            self.loss_dict["Train_L1"] /= self.train_batches
+            value = self.loss_dict["Train_L1"] / self.train_batches  # Average
+            self.loss_dict["Train_L1"] = f"{value:0.3f}"
         if "Val_L1" in self.loss_dict.keys():
-            self.loss_dict["Val_L1"] /= self.val_batches  # Average
+            value = self.loss_dict["Val_L1"] / self.val_batches
+            self.loss_dict["Val_L1"] = f"{value:0.3f}"
             # self.loss_dict["Val_MSE"] /= self.val_batches
 
-        metric_dict = {
+        self.metric_dict = {
             "Current LR": self.scheduler.get_last_lr()[0],
-            "Sample processing time Mean": self.data_time[0],
-            "Sample processing time Std": self.data_time[1],
-            "Samples per second": (self.curr_iteration * cfg.trn_batch_size)
-            / (time.perf_counter() - self.session.t0),
+            "Sample time Mean": self.data_time[0],
+            "Sample time Std": self.data_time[1],
+            "Samples per second": (
+                (self.curr_iteration * cfg.trn_batch_size)
+                / (time.perf_counter() - self.session.t1)
+            ),
         }
 
         if log_to_comet:
             self.exp.set_step(self.curr_iteration)
-            self.exp.log_metrics({**self.loss_dict, **metric_dict})
+            self.exp.log_metrics({**self.loss_dict, **self.metric_dict})
         if log_to_disk:
             logging.getLogger("Train").info(
                 f"| Iter: {self.curr_iteration:5d} "
-                f"| {' | '.join([f'{k:>10}: {v:.5f}' for k, v in {**self.loss_dict, **metric_dict}.items()])} |"
+                f"| {' | '.join([f'{k:>10}: {v:0.2f}' for k, v in {**self.loss_dict, **self.metric_dict}.items()])} |"
             )  # Merge metrics and losses and print fixed width strings using | separator
 
         self.train_batches = 0  # reset average counter
