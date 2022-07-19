@@ -181,10 +181,10 @@ class BaseModel(nn.Module):
 
         if "Train_L1" in self.loss_dict.keys():
             value = self.loss_dict["Train_L1"] / self.train_batches  # Average
-            self.loss_dict["Train_L1"] = f"{value:0.3f}"
+            self.loss_dict["Train_L1"] = value
         if "Val_L1" in self.loss_dict.keys():
             value = self.loss_dict["Val_L1"] / self.val_batches
-            self.loss_dict["Val_L1"] = f"{value:0.3f}"
+            self.loss_dict["Val_L1"] = value
             # self.loss_dict["Val_MSE"] /= self.val_batches
 
         self.metric_dict = {

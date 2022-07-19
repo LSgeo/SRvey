@@ -13,10 +13,8 @@ from mlnoddy.datasets import NoddyDataset
 def build_dataloaders():
     """Returns dataloaders for Training, Validation, and image previews"""
 
-    train_dataset = HRLRNoddyDataset(
-        model_dir=cfg.train_tiles_path, **cfg.dataset_config
-    )
-    val_dataset = HRLRNoddyDataset(model_dir=cfg.val_tiles_path, **cfg.dataset_config)
+    train_dataset = HRLRNoddyDataset(model_dir=cfg.train_path, **cfg.dataset_config)
+    val_dataset = HRLRNoddyDataset(model_dir=cfg.val_path, **cfg.dataset_config)
     preview_dataset = Subset(val_dataset, cfg.preview_indices)
 
     logging.getLogger("Data").info(

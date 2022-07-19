@@ -6,7 +6,7 @@ def main():
     from srvey import Session
     from srvey.networks.lte import LTE
 
-    session = Session(debug=False)
+    session = Session(debug=True)
 
     train_dataloader, val_dataloader, preview_dataloader = data.build_dataloaders()
     model = LTE(session)
