@@ -32,7 +32,7 @@ class BaseModel(nn.Module):
         self.use_amp = cfg.use_amp and "cuda" in self.d.type
         self.scaler = torch.cuda.amp.GradScaler(enabled=cfg.use_amp)
 
-        self.norm = mlnoddy.datasets.Norm(clip=5000).min_max_clip
+        self.norm = mlnoddy.datasets.Norm(clip=5000)
 
         # self.cri_mse = nn.MSELoss().to(self.d, non_blocking=True)
         self.cri_L1 = nn.L1Loss().to(self.d, non_blocking=True)
@@ -149,7 +149,7 @@ class BaseModel(nn.Module):
             )
 
         sr = reshape_coordinate_array(batch["lr_grid"], batch["hr_grid"], sr)
-        data = {"SR": self.norm(sr, inverse=True).numpy()}
+        data = {"SR": sr.numpy()}
 
         if self.curr_epoch == self.start_epoch:  # Log LR and HR only once
             data["LR"] = batch["lr_grid"].cpu().numpy()
@@ -203,7 +203,7 @@ class BaseModel(nn.Module):
         if log_to_disk:
             logging.getLogger("Train").info(
                 f"| Iter: {self.curr_iteration:5d} "
-                f"| {' | '.join([f'{k:>10}: {v:0.2f}' for k, v in {**self.loss_dict, **self.metric_dict}.items()])} |"
+                f"| {' | '.join([f'{k:>10}: {v:0.4f}' for k, v in {**self.loss_dict, **self.metric_dict}.items()])} |"
             )  # Merge metrics and losses and print fixed width strings using | separator
 
         self.train_batches = 0  # reset average counter
