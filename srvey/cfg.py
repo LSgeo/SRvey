@@ -39,11 +39,13 @@ dataset_config = {
     "load_magnetics": True,
     "load_gravity": False,
     "load_geology": False,
-    "augment": False,
-    "scale": 2,
-    "line_spacing": 5 * 20,
-    "sample_spacing": 20,
-    "heading": "NS",
+    # We are training implicit representation, it is useful to have a
+    # range of scales. HR is always every 2nd line. LR is 3 or more.
+    "hr_line_spacing": 2,  #
+    "lr_line_spacing_min": 3,  # e.g. 2 use every 2nd line
+    "lr_line_spacing_max": 5,  # e.g. 5 use every 5th line
+    "sample_spacing": 1,  # in grid indices, *= 20m for spatial
+    "heading": "NS",  # None for random, "EW" for 90 rotated
 }
 scheduler_spec = {
     "name": "msrl",

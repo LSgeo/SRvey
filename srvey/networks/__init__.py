@@ -83,7 +83,7 @@ class BaseModel(nn.Module):
 
     def feed_data(self, batch):
         self.lr = batch["lr_grid"].to(self.d, non_blocking=True)
-        self.hr = batch["hr_vals"].to(self.d, non_blocking=True)
+        self.hr = batch["hr_val"].to(self.d, non_blocking=True)
         self.coord = batch["hr_coord"].to(self.d, non_blocking=True)
         self.cell = batch["hr_cell"].to(self.d, non_blocking=True)
         self.data_time = (
