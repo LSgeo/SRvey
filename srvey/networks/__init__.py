@@ -8,6 +8,7 @@ import logging
 import time
 from pathlib import Path
 
+import colorcet as cc
 import numpy as np
 import torch
 import torch.nn as nn
@@ -86,9 +87,7 @@ class BaseModel(nn.Module):
         self.hr = batch["hr_vals"].to(self.d, non_blocking=True)
         self.coord = batch["hr_coord"].to(self.d, non_blocking=True)
         self.cell = batch["hr_cell"].to(self.d, non_blocking=True)
-        self.data_time = (
-            batch["Sample processing time"] / self.lr.shape[0]
-        )  # Stays on cpu.
+        self.data_time = (batch["Sample processing time"] / self.lr.shape[0])
         self.data_time = [self.data_time.mean(), self.data_time.std()]  # Stays on cpu.
 
     def train_on_batch(self):
@@ -155,26 +154,26 @@ class BaseModel(nn.Module):
             data["LR"] = batch["lr_grid"].cpu().numpy()
             data["HR"] = batch["hr_grid"].cpu().numpy()
 
-            # For each resolution batch
-            for name, res_batch in data.items():
-                # For each tensor in the batch
-                for i, grid in enumerate(res_batch):
-                    if log_to_comet:
-                        self.exp.log_image(
-                            (
-                                255 * (grid - grid.min()) / (grid.max() - grid.min())
-                            ).astype(np.uint8),
-                            name=f"Grid_{cfg.preview_indices[i]}_{name}",
-                            image_scale=1,
-                            step=self.curr_iteration,
-                        )
+        # For each resolution batch
+        for name, res_batch in data.items():
+            # For each tensor in the batch
+            for i, grid in enumerate(res_batch):
+                if log_to_comet:
+                    self.exp.log_image(
+                        grid,
+                        image_minmax=(grid.min(), grid.max()),
+                        name=f"Grid_{cfg.preview_indices[i]}_{name}",
+                        image_scale=1,
+                        step=self.curr_iteration,
+                        image_colormap=cc.cm.CET_L1,
+                    )
 
-                    if log_to_disk:
-                        import matplotlib.pyplot as plt
+                # if log_to_disk:
+                #     import matplotlib.pyplot as plt
 
-                        plt.imshow(data["SR"][i, :, :, :])
-                        plt.savefig(f"Preview_{i}.png")
-                        plt.close()
+                #     plt.imshow(grid[i, :, :, :])
+                #     plt.savefig(f"Preview_{i}.png")
+                #     plt.close()
 
     def log_metrics(self, log_to_disk: bool = True, log_to_comet: bool = True):
         """Save metrics to Comet.ml, and/or log locally"""
@@ -191,10 +190,6 @@ class BaseModel(nn.Module):
             "Current LR": self.scheduler.get_last_lr()[0],
             "Sample time Mean": self.data_time[0],
             "Sample time Std": self.data_time[1],
-            "Samples per second": (
-                (self.curr_iteration * cfg.trn_batch_size)
-                / (time.perf_counter() - self.session.t1)
-            ),
         }
 
         if log_to_comet:
@@ -203,7 +198,7 @@ class BaseModel(nn.Module):
         if log_to_disk:
             logging.getLogger("Train").info(
                 f"| Iter: {self.curr_iteration:5d} "
-                f"| {' | '.join([f'{k:>10}: {v:0.4f}' for k, v in {**self.loss_dict, **self.metric_dict}.items()])} |"
+                f"| {' | '.join([f'{k:>10}: {v:0.1e}' for k, v in {**self.loss_dict, **self.metric_dict}.items()])} |"
             )  # Merge metrics and losses and print fixed width strings using | separator
 
         self.train_batches = 0  # reset average counter

@@ -1,12 +1,13 @@
 # print(f"Creating a process in {__name__}")  # Dataloader workers
 
+
 def main():
     import srvey.cfg as cfg
     import srvey.data as data
     from srvey import Session
     from srvey.networks.lte import LTE
 
-    session = Session(debug=True)
+    session = Session(debug=False)
 
     train_dataloader, val_dataloader, preview_dataloader = data.build_dataloaders()
     model = LTE(session)
@@ -52,10 +53,10 @@ def main():
 
         if model.curr_epoch % cfg.checkpoint_freq == 0:
             model.save_model(for_inference_only=False)
-        
+
         if "mslr" in cfg.scheduler_spec["name"]:
             model.scheduler.step()
-            
+
     model.save_model(
         name=f"final_epoch_{model.curr_epoch}.tar", for_inference_only=False
     )

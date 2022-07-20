@@ -4,7 +4,7 @@ from pathlib import Path
 root_path = Path("D:/luke/Noddy_data")
 train_path = root_path / "noddyverse_train_data"
 val_path = root_path / "noddyverse_val_data"
-preview_indices = [6, 18, 20, 23]  # , 24, 30, 38, 44, 46, 48]
+preview_indices = [6, 13, 11, 12]  # , 24, 30, 38, 44, 46, 48]
 
 pretrained_model_id: str = None  # will search for model file
 train_from_epoch = -1  # specify epoch to train from, -1 for final

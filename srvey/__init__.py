@@ -22,6 +22,7 @@ class Session:
     """Create folder structure, create comet experiment"""
 
     def __init__(self, debug=False):
+        self.debug = debug
         self.t0 = time.perf_counter()
         self.t1 = time.perf_counter()
         np.seterr(all="raise")
@@ -90,7 +91,7 @@ class Session:
 
     def __init_log(self):
         logging.basicConfig(
-            level=logging.DEBUG,
+            level=logging.DEBUG if self.debug else logging.INFO,
             format="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
             datefmt="%m-%d %H:%M",
             filename=f"{self.session_dir / 'session.log'}",
@@ -98,9 +99,9 @@ class Session:
         )
 
         console = logging.StreamHandler()
-        console.setLevel(logging.INFO)
+        console.setLevel(logging.DEBUG if self.debug else logging.INFO)
         formatter = logging.Formatter(
-            "%(asctime)s %(name)-8s: %(levelname)-8s %(message)s"
+            "%(asctime)-8s %(name)-8s: %(levelname)-8s %(message)s"
         )
         console.setFormatter(formatter)
         logging.getLogger().addHandler(console)
@@ -122,4 +123,4 @@ class Session:
 
     def end(self):
         self.experiment.end()
-        self.log.info(f"| Finished in {time.perf_counter() - self.t0:d} seconds.")
+        self.log.info(f"| Finished in {time.perf_counter() - self.t0:01f} seconds.")
