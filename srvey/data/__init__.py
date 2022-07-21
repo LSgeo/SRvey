@@ -1,5 +1,6 @@
 import logging
 import time
+from pathlib import Path
 
 import numpy as np
 import verde as vd
@@ -13,11 +14,21 @@ from mlnoddy.datasets import NoddyDataset
 def build_dataloaders():
     """Returns dataloaders for Training, Validation, and image previews"""
 
-    train_dataset = HRLRNoddyDataset(model_dir=cfg.train_path, **cfg.dataset_config)
-    val_dataset = HRLRNoddyDataset(model_dir=cfg.val_path, **cfg.dataset_config)
+    logging.getLogger(__name__).debug(f"Pre-computing model names")
+    t_m_names = [(p.parent.name, p.name[:-7]) for p in Path(cfg.train_path).glob("**/*.his*")]
+    v_m_names = [(p.parent.name, p.name[:-7]) for p in Path(cfg.val_path).glob("**/*.his*")]
+    t_m_names = np.array(t_m_names).astype(np.string_)
+    v_m_names = np.array(v_m_names).astype(np.string_)
+
+    train_dataset = HRLRNoddyDataset(
+        model_dir=cfg.train_path, m_names_precompute=t_m_names, **cfg.dataset_config
+    )
+    val_dataset = HRLRNoddyDataset(
+        model_dir=cfg.val_path, m_names_precompute=v_m_names, **cfg.dataset_config
+    )
     preview_dataset = Subset(val_dataset, cfg.preview_indices)
 
-    logging.getLogger("Data").info(
+    logging.getLogger(__name__).info(
         f"| Training samples: {len(train_dataset)}"
         f" | Validation samples: {len(val_dataset)}"
         f" | Number of previews: {len(preview_dataset)} |"
