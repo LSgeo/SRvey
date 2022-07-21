@@ -1,5 +1,8 @@
+.vscode/
 .comet.config
+
 experiments/
 
 *pycache*
 *.egg*
+*.dat
