@@ -60,7 +60,7 @@ def build_dataloaders():
     return train_dataloader, validation_dataloader, preview_dataloader
 
 
-def subsample(parameters: dict, scale=1, *rasters):
+def subsample(parameters: dict, scale=1, raster=None):
     input_cell_size = 20
     """Run a mock-survey on a geophysical raster.
     Designed for use with Noddy forward models, as part of a Pytorch dataset.
@@ -99,15 +99,23 @@ def subsample(parameters: dict, scale=1, *rasters):
     if parameters.get("heading").upper() in ["EW", "E", "W"]:
         ls, ss = ss, ls  # swap convention to emulate survey direction
 
-    x, y = np.meshgrid(np.arange(200), np.arange(200), indexing="xy")
-    x = cs * x[::ls, ::ss]
-    y = cs * y[::ls, ::ss]
-    zs = [raster[::ls, ::ss] for raster in rasters]
+    #                                y,           x
+    # Numpy:            Channels, rows (H), columns (W)
+    # Pytorch: Batches, Channels, rows (H), columns (W)
 
-    return x, y, zs
+    xx, yy = np.meshgrid(
+        np.arange(raster.shape[-1]),  # x, cols
+        np.arange(raster.shape[-2]),  # y, rows
+        indexing="xy",
+    )
+    xx = cs * xx[::ss, ::ls]
+    yy = cs * yy[::ss, ::ls]
+    z = raster.numpy()[:, ::ss, ::ls].squeeze()
+
+    return xx, yy, z
 
 
-def grid(x, y, zs, ls: int = 20, cs_fac: int = 4):
+def grid(x, y, z, ls: int = 20, cs_fac: int = 4, scale=None):
     in_cs: int = 20
     """Grid a subsampled noddy forward model.
 
@@ -122,15 +130,35 @@ def grid(x, y, zs, ls: int = 20, cs_fac: int = 4):
     See docstring for subsample() for further notes.
     #TODO Grid the full extent, or crop to useful extent.
     """
-    for rz in zs:
-        gridder = vd.ScipyGridder("cubic", extra_args={"fill_value": 0}).fit((x, y), rz)
 
-        yield gridder.grid(
-            region=[0, in_cs * 200, 0, in_cs * 200],
-            spacing=ls / cs_fac,
-            dims=["x", "y"],
+    w0 = 10 # Move away from boundary
+    s0 = 10
+    d = 150 # Max extent unlikely to have NaNs TODO confirm
+    w, e, s, n = np.array([w0, w0 + d, s0, s0 + d], dtype=np.float32) * in_cs
+
+    gridder = vd.ScipyGridder("cubic")  # , extra_args={"fill_value": 0})
+    gridder = gridder.fit((x, y), z)
+    grid = gridder.grid(
             data_names="forward",
-        ).get("forward").values.astype(np.float32)
+        coordinates=np.meshgrid(
+            np.arange(w, e, step=ls / cs_fac),
+            np.arange(s, n, step=ls / cs_fac),
+        ),
+    )
+    grid = grid.get("forward").values.astype(np.float32)
+
+    # w0 = torch.randint(low=0, high=(max_d), size=(1,), dtype=torch.uint8).numpy()
+    # s0 = torch.randint(low=0, high=(max_d - d), size=(1,), dtype=torch.uint8).numpy()
+    d = int(cfg.encoder_spec["img_size"] / scale)
+    grid = grid[:d, :d]
+
+    # plt.imshow(grid, origin="lower")
+    # plt.title(f"scale: {scale:0.1f}, {e=}, {n=}")
+    # plt.colorbar()
+    # plt.savefig(f"test_{ls}.png")
+    # plt.close()
+
+    return np.expand_dims(grid, 0)  # Add channel dimension
 
 
 def make_coord(shape, ranges=None, flatten=True):
@@ -170,8 +198,9 @@ def to_cell_samples(grid):
     """
     if len(grid.shape) != 3:  # C,H,W, data are not batched yet.
         raise ValueError(f"Grid should be of shape C,H,W by now. Got {grid.shape}")
+
     coord = make_coord(grid.shape[-2:])
-    c_vals = grid.view(grid.shape[-3], -1).permute(1, 0)
+    c_vals = np.expand_dims(grid.flatten(), 0).T
     return coord, c_vals
 
 
@@ -198,25 +227,23 @@ class HRLRNoddyDataset(NoddyDataset):
             else:
                 self.sp["heading"] = "EW"
 
-        hr_x, hr_y, _hr_zs = subsample(self.sp, 1, *self.data["gt_grid"])
-        lr_x, lr_y, _lr_zs = subsample(self.sp, self.scale, *self.data["gt_grid"])
-        _hr_grids = [
-            torch.from_numpy(g).unsqueeze(0) for g in grid(hr_x, hr_y, _hr_zs, ls=hls)
-        ]
-        _lr_grids = [
-            torch.from_numpy(g).unsqueeze(0) for g in grid(lr_x, lr_y, _lr_zs, ls=lls)
-        ]
+        hr_x, hr_y, hr_z = subsample(self.sp, 1, *self.data["gt_grid"])
+        lr_x, lr_y, lr_z = subsample(self.sp, self.scale, *self.data["gt_grid"])
+        self.data["hr_grid"] = grid(hr_x, hr_y, hr_z, ls=hls, scale=1)
+        self.data["lr_grid"] = grid(lr_x, lr_y, lr_z, ls=lls, scale=self.scale)
 
+        # _hr_grids = [torch.from_numpy(g).unsqueeze(0) for g in grid(hr_x, hr_y, _hr_zs, ls=hls)]
+        # _lr_grids = [torch.from_numpy(g).unsqueeze(0) for g in grid(lr_x, lr_y, _lr_zs, ls=lls)]
         if cfg.dataset_config["load_magnetics"] and cfg.dataset_config["load_gravity"]:
-            self.data["hr_grid"] = torch.stack(_hr_grids, dim=0)
-            self.data["lr_grid"] = torch.stack(_lr_grids, dim=0)
+            #     self.data["hr_grid"] = torch.stack(_hr_grids, dim=0)
+            #     self.data["lr_grid"] = torch.stack(_lr_grids, dim=0)
             raise NotImplementedError("Haven't designed network for this yet")
-        else:
-            self.data["hr_grid"] = _hr_grids[0]
-            self.data["lr_grid"] = _lr_grids[0]
+        # else:
+        #     self.data["hr_grid"] = _hr_grids[0]
+        #     self.data["lr_grid"] = _lr_grids[0]
 
         self.data["hr_coord"], self.data["hr_vals"] = to_cell_samples(
-            self.data["hr_grid"].contiguous()
+            self.data["hr_grid"]
         )
 
         self.data["hr_cell"] = torch.ones_like(self.data["hr_coord"])
