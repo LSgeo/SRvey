@@ -1,13 +1,12 @@
 # print(f"Creating a process in {__name__}")  # Dataloader workers
+import srvey.cfg as cfg
+import srvey.data as data
+from srvey import Session
+from srvey.networks.lte import LTE
 
 
 def main():
-    import srvey.cfg as cfg
-    import srvey.data as data
-    from srvey import Session
-    from srvey.networks.lte import LTE
-
-    session = Session(debug=False)
+    session = Session(debug=True)
 
     train_dataloader, val_dataloader, preview_dataloader = data.build_dataloaders()
     model = LTE(session)
@@ -27,13 +26,10 @@ def main():
         model.curr_epoch += 1
 
         for iter_num, batch in enumerate(train_dataloader):
-            if iter_num >= cfg.len_epochs:
-                NotImplementedError(
-                    "This is an incorrect method for limiting epoch length"
-                )
-                break
-
             model.curr_iteration += 1
+            if iter_num >= cfg.len_epochs:
+                NotImplementedError("Debug limiting epoch length, poorly")
+                break
 
             model.feed_data(batch)
             model.train_on_batch()

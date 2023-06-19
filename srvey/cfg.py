@@ -19,10 +19,10 @@ reproducibile_mode = True
 use_amp = True
 
 ## Parameters
-max_lr = 4e-5
-num_epochs = 10
-len_epochs = 1000  # We have 1M samples, so we need to have an artificial number
-shuffle = False  # Need to use a sampler for this number of samples.
+max_lr = 7e-5
+num_epochs = 100
+len_epochs = 200  # We have 1M samples, so we need to have an artificial number
+shuffle = True  # Need to use a sampler for this number of samples.
 
 num_workers = 6
 pin_memory = True

@@ -15,8 +15,12 @@ def build_dataloaders():
     """Returns dataloaders for Training, Validation, and image previews"""
 
     logging.getLogger(__name__).debug(f"Pre-computing model names")
-    t_m_names = [(p.parent.name, p.name[:-7]) for p in Path(cfg.train_path).glob("**/*.his*")]
-    v_m_names = [(p.parent.name, p.name[:-7]) for p in Path(cfg.val_path).glob("**/*.his*")]
+    t_m_names = [
+        (p.parent.name, p.name[:-7]) for p in Path(cfg.train_path).glob("**/*.his*")
+    ]
+    v_m_names = [
+        (p.parent.name, p.name[:-7]) for p in Path(cfg.val_path).glob("**/*.his*")
+    ]
     t_m_names = np.array(t_m_names).astype(np.string_)
     v_m_names = np.array(v_m_names).astype(np.string_)
 
@@ -131,15 +135,15 @@ def grid(x, y, z, ls: int = 20, cs_fac: int = 4, scale=None):
     #TODO Grid the full extent, or crop to useful extent.
     """
 
-    w0 = 10 # Move away from boundary
+    w0 = 10  # Move away from boundary
     s0 = 10
-    d = 150 # Max extent unlikely to have NaNs TODO confirm
+    d = 150  # Max extent unlikely to have NaNs TODO confirm
     w, e, s, n = np.array([w0, w0 + d, s0, s0 + d], dtype=np.float32) * in_cs
 
     gridder = vd.ScipyGridder("cubic")  # , extra_args={"fill_value": 0})
     gridder = gridder.fit((x, y), z)
     grid = gridder.grid(
-            data_names="forward",
+        data_names="forward",
         coordinates=np.meshgrid(
             np.arange(w, e, step=ls / cs_fac),
             np.arange(s, n, step=ls / cs_fac),
@@ -252,8 +256,8 @@ class HRLRNoddyDataset(NoddyDataset):
 
         self.data["Sample processing time"] = torch.tensor(
             time.perf_counter() - dt0, dtype=torch.float16
-        ) 
-         # used for metric
+        )
+        # used for metric
 
         # LTE Sample_q not implemented, but I think it subsamples random amount of pixels from the full suite
         # https://github.com/jaewon-lee-b/lte/blob/94bca2bf5777b76edbad46e899a1c2243e3751d4/datasets/wrappers.py#L64
